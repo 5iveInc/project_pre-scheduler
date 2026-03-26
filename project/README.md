@@ -1,3 +1,12 @@
+## MEMO
+
+* components.json	shadcn：設定ファイル（style: base-nova, Tailwind v4対応）
+* components/ui/**.tsx：shadcn コンポーネント
+* lib/utils.ts：cn() ユーティリティ関数
+* app/globals.css：CSS 変数（カラートークン等）が追加済み
+
+---
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
