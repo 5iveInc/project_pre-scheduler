@@ -115,7 +115,6 @@ export function UserList({ users }: { users: User[] }) {
           <TableHeader>
             <TableRow>
               <TableHead className="w-10 pl-6" />
-              <TableHead className="w-16">ID</TableHead>
               <TableHead>名前</TableHead>
               <TableHead>メールアドレス</TableHead>
               <TableHead className="pr-6 text-right">登録日時</TableHead>
@@ -133,7 +132,6 @@ export function UserList({ users }: { users: User[] }) {
                     onCheckedChange={() => toggleCheck(user.id)}
                   />
                 </TableCell>
-                <TableCell className="text-muted-foreground">{user.id}</TableCell>
                 <TableCell className="font-medium">{user.name}</TableCell>
                 <TableCell className="text-muted-foreground">{user.email}</TableCell>
                 <TableCell className="pr-6 text-right text-muted-foreground">
