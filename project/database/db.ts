@@ -66,6 +66,11 @@ function initSchema(db: Database.Database) {
     db.exec(`ALTER TABLE projects ADD COLUMN memo TEXT`)
   }
 
+  // migration: volume 列がなければ追加
+  if (!columns.some((c) => c.name === "volume")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN volume INTEGER`)
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS custom_holidays (
       date TEXT PRIMARY KEY
@@ -130,6 +135,7 @@ export type Project = {
   start_date: string | null
   end_date: string | null
   memo: string | null
+  volume: number | null
   created_at: string
 }
 
@@ -143,13 +149,14 @@ type RawProject = {
   start_date: string | null
   end_date: string | null
   memo: string | null
+  volume: number | null
   created_at: string
 }
 
 export function getProjects(): Project[] {
   const rows = getDb().prepare(`
     SELECT
-      p.id, p.name, p.start_date, p.end_date, p.memo, p.created_at,
+      p.id, p.name, p.start_date, p.end_date, p.memo, p.volume, p.created_at,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
@@ -174,6 +181,7 @@ export function getProjects(): Project[] {
     start_date: row.start_date,
     end_date: row.end_date,
     memo: row.memo,
+    volume: row.volume,
     created_at: row.created_at,
   }))
 }
@@ -195,11 +203,12 @@ export function addProject(
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
+  volume: number | null,
 ): void {
   const db = getDb()
   const { lastInsertRowid } = db
-    .prepare("INSERT INTO projects (name, start_date, end_date, memo) VALUES (?, ?, ?, ?)")
-    .run(name, startDate, endDate, memo)
+    .prepare("INSERT INTO projects (name, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?)")
+    .run(name, startDate, endDate, memo, volume)
   insertJunction(db, "project_assignees", lastInsertRowid, assigneeIds)
   insertJunction(db, "project_supports", lastInsertRowid, supportIds)
 }
@@ -212,10 +221,11 @@ export function updateProject(
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
+  volume: number | null,
 ): void {
   const db = getDb()
-  db.prepare("UPDATE projects SET name=?, start_date=?, end_date=?, memo=? WHERE id=?")
-    .run(name, startDate, endDate, memo, id)
+  db.prepare("UPDATE projects SET name=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?")
+    .run(name, startDate, endDate, memo, volume, id)
   db.prepare("DELETE FROM project_assignees WHERE project_id=?").run(id)
   db.prepare("DELETE FROM project_supports WHERE project_id=?").run(id)
   insertJunction(db, "project_assignees", id, assigneeIds)

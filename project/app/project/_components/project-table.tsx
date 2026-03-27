@@ -76,12 +76,14 @@ function ProjectFormFields({
     startDate?: string | null
     endDate?: string | null
     memo?: string | null
+    volume?: number | null
   }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
+  const [volume, setVolume] = useState<number | null>(defaultValues?.volume ?? 3)
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
@@ -159,6 +161,28 @@ function ProjectFormFields({
       </div>
 
       <div className="space-y-1.5">
+        <Label>ボリューム</Label>
+        <input type="hidden" name="volume" value={volume ?? ""} />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVolume(volume === v ? null : v)}
+              className={[
+                "flex size-8 items-center justify-center rounded-md border text-sm font-medium transition-colors",
+                volume === v
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background text-muted-foreground hover:bg-muted",
+              ].join(" ")}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
         <Label htmlFor="memo">メモ</Label>
         <textarea
           id="memo"
@@ -212,8 +236,9 @@ function ProjectRow({
     const startDate = (formData.get("startDate") as string) || null
     const endDate = (formData.get("endDate") as string) || null
     const memo = (formData.get("memo") as string) || null
+    const volume = Number(formData.get("volume")) || null
     startTransition(async () => {
-      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo)
+      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume)
       setOpen(false)
     })
   }
@@ -257,6 +282,7 @@ function ProjectRow({
                 startDate: project.start_date,
                 endDate: project.end_date,
                 memo: project.memo,
+                volume: project.volume,
               }}
             />
             <DialogFooter>

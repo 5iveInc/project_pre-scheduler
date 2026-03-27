@@ -16,9 +16,10 @@ export async function updateProjectTimelineAction(
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
+  volume: number | null,
 ) {
   if (!name.trim()) return
-  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo)
+  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume)
   revalidatePath("/timeline")
   revalidatePath("/project")
 }

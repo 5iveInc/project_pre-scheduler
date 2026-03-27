@@ -22,18 +22,17 @@ const MONTH_HEADER_HEIGHT = 30
 const DAY_HEADER_HEIGHT = 44
 const LEFT_COL_WIDTH = 200
 
-const BAR_COLORS = [
-  "#60a5fa", // blue-400
-  "#4ade80", // green-400
-  "#c084fc", // purple-400
-  "#fb923c", // orange-400
-  "#f472b6", // pink-400
-  "#2dd4bf", // teal-400
-  "#f87171", // red-400
-  "#facc15", // yellow-400
-  "#818cf8", // indigo-400
-  "#34d399", // emerald-400
-]
+const VOLUME_COLORS: Record<number, string> = {
+  1: "#bfdbfe", // blue-200
+  2: "#93c5fd", // blue-300
+  3: "#60a5fa", // blue-400
+  4: "#3b82f6", // blue-500
+  5: "#2563eb", // blue-600
+}
+
+function barColorFromVolume(volume: number | null): string {
+  return volume !== null ? (VOLUME_COLORS[volume] ?? VOLUME_COLORS[3]) : VOLUME_COLORS[3]
+}
 
 // ── 日付ユーティリティ ──────────────────────────────────────
 
@@ -144,12 +143,14 @@ function ProjectFormFields({
     startDate?: string | null
     endDate?: string | null
     memo?: string | null
+    volume?: number | null
   }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
+  const [volume, setVolume] = useState<number | null>(defaultValues?.volume ?? 3)
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
@@ -222,6 +223,28 @@ function ProjectFormFields({
             value={endDate ?? ""}
             onChange={(e) => setEndDate(e.target.value)}
           />
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>ボリューム</Label>
+        <input type="hidden" name="volume" value={volume ?? ""} />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5].map((v) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVolume(volume === v ? null : v)}
+              className={[
+                "flex size-8 items-center justify-center rounded-md border text-sm font-medium transition-colors",
+                volume === v
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-input bg-background text-muted-foreground hover:bg-muted",
+              ].join(" ")}
+            >
+              {v}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -309,6 +332,7 @@ export function TimelineView({
     const startDate = (formData.get("startDate") as string) || null
     const endDate = (formData.get("endDate") as string) || null
     const memo = (formData.get("memo") as string) || null
+    const volume = Number(formData.get("volume")) || null
     startTransition(async () => {
       await updateProjectTimelineAction(
         editProject.id,
@@ -318,6 +342,7 @@ export function TimelineView({
         startDate,
         endDate,
         memo,
+        volume,
       )
       setEditProject(null)
     })
@@ -383,14 +408,21 @@ export function TimelineView({
               </div>
             ) : (
               projects.map((p) => (
-                <div
+                <button
                   key={p.id}
+                  type="button"
                   style={{ height: ROW_HEIGHT }}
-                  className="border-b last:border-b-0 flex items-center px-3 text-sm font-medium truncate"
-                  title={p.name}
+                  className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => setEditProject(p)}
+                  title={`${p.name}（クリックで編集）`}
                 >
-                  {p.name}
-                </div>
+                  {p.volume !== null && (
+                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
+                      Lv.{p.volume}
+                    </span>
+                  )}
+                  <span className="text-sm font-medium truncate">{p.name}</span>
+                </button>
               ))
             )}
           </div>
@@ -445,7 +477,7 @@ export function TimelineView({
                   案件がありません。「案件一覧」から登録してください。
                 </div>
               ) : (
-                projects.map((p, pi) => {
+                projects.map((p) => {
                   let barLeft: number | null = null
                   let barWidth: number | null = null
 
@@ -462,7 +494,7 @@ export function TimelineView({
                     }
                   }
 
-                  const barColor = BAR_COLORS[pi % BAR_COLORS.length]
+                  const barColor = barColorFromVolume(p.volume)
 
                   return (
                     <div
@@ -532,6 +564,7 @@ export function TimelineView({
                   startDate: editProject.start_date,
                   endDate: editProject.end_date,
                   memo: editProject.memo,
+                  volume: editProject.volume,
                 }}
               />
               <DialogFooter>
