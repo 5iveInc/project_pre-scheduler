@@ -275,6 +275,39 @@ function ProjectFormFields({
   )
 }
 
+// ── レーン割り当て（担当タブ用）──────────────────────────────
+// 重なる案件を別レーンに振り分ける（最小レーン数でグリーディ割り当て）
+function calcLanes(projectList: Project[]): {
+  assignments: Array<{ project: Project; lane: number }>
+  laneCount: number
+} {
+  const withDates = [...projectList]
+    .filter((p) => p.start_date && p.end_date)
+    .sort((a, b) => a.start_date!.localeCompare(b.start_date!))
+
+  const laneEnds: string[] = [] // 各レーンの最後の案件の終了日
+  const assignments: Array<{ project: Project; lane: number }> = []
+
+  for (const p of withDates) {
+    let placed = false
+    for (let i = 0; i < laneEnds.length; i++) {
+      // 前の案件の終了日が現在の開始日より前なら同じレーンに配置可能
+      if (laneEnds[i] < p.start_date!) {
+        laneEnds[i] = p.end_date!
+        assignments.push({ project: p, lane: i })
+        placed = true
+        break
+      }
+    }
+    if (!placed) {
+      assignments.push({ project: p, lane: laneEnds.length })
+      laneEnds.push(p.end_date!)
+    }
+  }
+
+  return { assignments, laneCount: Math.max(1, laneEnds.length) }
+}
+
 // ── タイムラインビュー ──────────────────────────────────────
 
 export function TimelineView({
@@ -300,6 +333,7 @@ export function TimelineView({
   const showTodayLine = todayIndex >= 0 && todayIndex < totalDays
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  const assignScrollRef = useRef<HTMLDivElement>(null)
 
   // ── 日幅（ドラッグで可変）──
   const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)
@@ -310,6 +344,9 @@ export function TimelineView({
   useEffect(() => {
     if (scrollRef.current && todayIndex > 0) {
       scrollRef.current.scrollLeft = todayIndex * dayWidth
+    }
+    if (assignScrollRef.current && todayIndex > 0) {
+      assignScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     // dayWidth 変化時は再スクロールしない（意図した表示位置を保持）
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -337,6 +374,17 @@ export function TimelineView({
   }
 
   const [activeTab, setActiveTab] = useState("project")
+
+  useEffect(() => {
+    if (todayIndex <= 0) return
+    if (activeTab === "project" && scrollRef.current) {
+      scrollRef.current.scrollLeft = todayIndex * dayWidth
+    }
+    if (activeTab === "assign" && assignScrollRef.current) {
+      assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -732,6 +780,176 @@ export function TimelineView({
       </div>
       </>
       )}
+
+      {/* ── 担当タブ ── */}
+      {activeTab === "assign" && (() => {
+        const assigneeUsers = users.filter((u) =>
+          projects.some((p) => p.assignee_ids.includes(u.id))
+        )
+        // ユーザーごとにレーン割り当てを事前計算
+        const userLaneData = assigneeUsers.map((u) => {
+          const userProjects = projects.filter((p) => p.assignee_ids.includes(u.id))
+          const { assignments, laneCount } = calcLanes(userProjects)
+          return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT }
+        })
+
+        return (
+          <>
+            {/* ツールバー（設定のみ） */}
+            <div className="flex justify-end gap-2 mb-2">
+              <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+                <Settings2Icon className="size-4" />
+                設定
+              </Button>
+            </div>
+
+            <div className="rounded-lg border overflow-hidden bg-background">
+              <div className="flex">
+                {/* 左固定列 */}
+                <div
+                  style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+                  className="shrink-0 border-r bg-background z-10"
+                >
+                  <div style={{ height: MONTH_HEADER_HEIGHT }} className="border-b bg-muted/40" />
+                  <div
+                    style={{ height: DAY_HEADER_HEIGHT }}
+                    className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
+                  >
+                    担当者
+                  </div>
+                  {userLaneData.length === 0 ? (
+                    <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                      担当者なし
+                    </div>
+                  ) : (
+                    userLaneData.map(({ user: u, rowHeight }) => (
+                      <div
+                        key={u.id}
+                        style={{ height: rowHeight }}
+                        className="w-full border-b last:border-b-0 flex items-center px-3"
+                      >
+                        <span className="text-sm font-medium truncate">{u.name}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* 右スクロール領域 */}
+                <div ref={assignScrollRef} className="overflow-x-auto flex-1">
+                  <div style={{ width: totalWidth, minWidth: totalWidth }}>
+
+                    {/* 月ヘッダー */}
+                    <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
+                      {monthGroups.map((mg, i) => (
+                        <div
+                          key={i}
+                          style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
+                          className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                        >
+                          {mg.label}
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
+                    <div
+                      className="flex border-b select-none cursor-ew-resize"
+                      style={{ height: DAY_HEADER_HEIGHT }}
+                      onMouseDown={handleDayHeaderMouseDown}
+                    >
+                      {dates.map((d, i) => {
+                        const isToday = i === todayIndex
+                        return (
+                          <div
+                            key={i}
+                            style={{ width: dayWidth, minWidth: dayWidth }}
+                            className={[
+                              "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
+                              isToday
+                                ? "bg-green-500 text-white"
+                                : isRestDay(d)
+                                ? "bg-gray-300 text-muted-foreground"
+                                : "text-muted-foreground",
+                            ].join(" ")}
+                          >
+                            <span>{d.getDate()}</span>
+                            {dayWidth >= 24 && (
+                              <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {/* 担当者行 */}
+                    {userLaneData.length === 0 ? (
+                      <div
+                        style={{ height: ROW_HEIGHT }}
+                        className="flex items-center justify-center text-sm text-muted-foreground"
+                      >
+                        担当者が割り当てられた案件がありません。
+                      </div>
+                    ) : (
+                      userLaneData.map(({ user: u, assignments, rowHeight }) => (
+                        <div
+                          key={u.id}
+                          style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                          className="border-b last:border-b-0"
+                        >
+                          {/* 今日のカラムハイライト */}
+                          {showTodayLine && (
+                            <div
+                              className="absolute top-0 bottom-0 pointer-events-none"
+                              style={{
+                                left: todayIndex * dayWidth,
+                                width: dayWidth,
+                                backgroundColor: "rgba(74,222,128,0.3)",
+                              }}
+                            />
+                          )}
+                          {/* 案件バー（レーンごとに縦位置を計算） */}
+                          {assignments.map(({ project: p, lane }) => {
+                            const sd = parseLocalDate(p.start_date!)
+                            const ed = parseLocalDate(p.end_date!)
+                            const startIdx = dayDiff(start, sd)
+                            const endIdx = dayDiff(start, ed)
+                            const clampedStart = Math.max(0, startIdx)
+                            const clampedEnd = Math.min(totalDays - 1, endIdx)
+                            if (clampedStart > clampedEnd) return null
+                            const barLeft = clampedStart * dayWidth + 3
+                            const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                            const barTop = lane * ROW_HEIGHT + 10
+                            const barHeight = ROW_HEIGHT - 20
+                            return (
+                              <div
+                                key={p.id}
+                                className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                style={{
+                                  left: barLeft,
+                                  width: barWidth,
+                                  top: barTop,
+                                  height: barHeight,
+                                  backgroundColor: barColorFromVolume(p.volume),
+                                }}
+                                onClick={() => setEditProject(p)}
+                                title={`${p.name}（クリックで編集）`}
+                              >
+                                <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                  {p.name}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )
+      })()}
 
       {/* 編集モーダル */}
       <Dialog open={editProject !== null} onOpenChange={(open) => !open && setEditProject(null)}>
