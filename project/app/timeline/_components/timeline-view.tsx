@@ -574,7 +574,7 @@ export function TimelineView({
                       className={[
                         "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] select-none font-medium leading-tight",
                         isToday
-                          ? "bg-blue-500 text-white"
+                          ? "bg-green-500 text-white"
                           : isRestDay(d)
                           ? "bg-gray-300 text-muted-foreground"
                           : "text-muted-foreground",
@@ -633,7 +633,7 @@ export function TimelineView({
                           style={{
                             left: todayIndex * DAY_WIDTH,
                             width: DAY_WIDTH,
-                            backgroundColor: "rgba(59,130,246,0.08)",
+                            backgroundColor: "rgba(74,222,128,0.3)",
                           }}
                         />
                       )}
