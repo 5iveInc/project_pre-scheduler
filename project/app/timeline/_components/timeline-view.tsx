@@ -227,7 +227,16 @@ function ProjectFormFields({
 
 // ── タイムラインビュー ──────────────────────────────────────
 
-export function TimelineView({ projects, users }: { projects: Project[]; users: User[] }) {
+export function TimelineView({
+  projects,
+  users,
+  holidays,
+}: {
+  projects: Project[]
+  users: User[]
+  holidays: string[]
+}) {
+  const holidaySet = new Set(holidays)
   const { start, end } = getDisplayRange(projects)
   const dates = getDates(start, end)
   const monthGroups = getMonthGroups(dates)
@@ -270,18 +279,26 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
     })
   }
 
-  // 縦グリッド線 + 週末列の背景を background-image で合成
+  function toYMD(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }
+
+  function isRestDay(d: Date): boolean {
+    return d.getDay() === 0 || d.getDay() === 6 || holidaySet.has(toYMD(d))
+  }
+
+  // 縦グリッド線 + 休日列（土日・祝日）の背景を background-image で合成
   const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH}px)`
-  const weekendBands = dates
+  const restBands = dates
     .map((d, i) => {
-      if (d.getDay() !== 0 && d.getDay() !== 6) return null
+      if (!isRestDay(d)) return null
       const l = i * DAY_WIDTH
       const r = l + DAY_WIDTH
       return `linear-gradient(to right, transparent ${l}px, #d1d5db ${l}px, #d1d5db ${r}px, transparent ${r}px)`
     })
     .filter(Boolean)
     .join(", ")
-  const rowBg = weekendBands ? `${gridLine}, ${weekendBands}` : gridLine
+  const rowBg = restBands ? `${gridLine}, ${restBands}` : gridLine
 
   return (
     <>
@@ -347,7 +364,6 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
               <div className="flex border-b" style={{ height: DAY_HEADER_HEIGHT }}>
                 {dates.map((d, i) => {
                   const isToday = i === todayIndex
-                  const isWeekend = d.getDay() === 0 || d.getDay() === 6
                   return (
                     <div
                       key={i}
@@ -356,7 +372,7 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
                         "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] select-none font-medium leading-tight",
                         isToday
                           ? "bg-blue-500 text-white"
-                          : isWeekend
+                          : isRestDay(d)
                           ? "bg-gray-300 text-muted-foreground"
                           : "text-muted-foreground",
                       ].join(" ")}
