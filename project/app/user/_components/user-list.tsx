@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { PlusIcon, Trash2Icon } from "lucide-react"
+import { PlusIcon, Trash2Icon, PencilIcon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,8 +24,95 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { addUserAction, deleteUsersAction } from "@/app/user/actions"
+import { addUserAction, updateUserAction, deleteUsersAction } from "@/app/user/actions"
 import type { User } from "@/database/db"
+
+// ── 編集行 ──────────────────────────────────────────────────
+
+function EditUserForm({ user, onSave }: { user: User; onSave: (formData: FormData) => void }) {
+  const [name, setName] = useState(user.name)
+  const [email, setEmail] = useState(user.email)
+
+  return (
+    <form action={onSave} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="edit-name">名前</Label>
+        <Input
+          id="edit-name"
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="edit-email">メールアドレス</Label>
+        <Input
+          id="edit-email"
+          name="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </div>
+      <DialogFooter>
+        <Button type="submit">保存する</Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
+function UserRow({
+  user,
+  checked,
+  onCheckedChange,
+}: {
+  user: User
+  checked: boolean
+  onCheckedChange: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [, startTransition] = useTransition()
+
+  function handleEdit(formData: FormData) {
+    startTransition(async () => {
+      await updateUserAction(user.id, formData)
+      setOpen(false)
+    })
+  }
+
+  return (
+    <>
+      <TableRow data-state={checked ? "selected" : undefined}>
+        <TableCell className="pl-6">
+          <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
+        </TableCell>
+        <TableCell className="font-medium">{user.name}</TableCell>
+        <TableCell className="text-muted-foreground">{user.email}</TableCell>
+        <TableCell className="text-right text-muted-foreground">
+          {user.created_at.slice(0, 10).replace(/-/g, "/")}
+        </TableCell>
+        <TableCell className="pr-6 text-right">
+          <Button variant="ghost" size="icon-sm" onClick={() => setOpen(true)}>
+            <PencilIcon />
+          </Button>
+        </TableCell>
+      </TableRow>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ユーザーを編集</DialogTitle>
+          </DialogHeader>
+          {open && <EditUserForm key={user.id} user={user} onSave={handleEdit} />}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+// ── リスト ──────────────────────────────────────────────────
 
 export function UserList({ users }: { users: User[] }) {
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
@@ -117,27 +204,18 @@ export function UserList({ users }: { users: User[] }) {
               <TableHead className="w-10 pl-6" />
               <TableHead>名前</TableHead>
               <TableHead>メールアドレス</TableHead>
-              <TableHead className="pr-6 text-right">登録日時</TableHead>
+              <TableHead className="text-right">登録日時</TableHead>
+              <TableHead className="w-12 pr-6" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {users.map((user) => (
-              <TableRow
+              <UserRow
                 key={user.id}
-                data-state={checkedIds.has(user.id) ? "selected" : undefined}
-              >
-                <TableCell className="pl-6">
-                  <Checkbox
-                    checked={checkedIds.has(user.id)}
-                    onCheckedChange={() => toggleCheck(user.id)}
-                  />
-                </TableCell>
-                <TableCell className="font-medium">{user.name}</TableCell>
-                <TableCell className="text-muted-foreground">{user.email}</TableCell>
-                <TableCell className="pr-6 text-right text-muted-foreground">
-                  {user.created_at.slice(0, 10).replace(/-/g, "/")}
-                </TableCell>
-              </TableRow>
+                user={user}
+                checked={checkedIds.has(user.id)}
+                onCheckedChange={() => toggleCheck(user.id)}
+              />
             ))}
           </TableBody>
         </Table>

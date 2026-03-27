@@ -97,6 +97,10 @@ export function addUser(name: string, email: string): void {
   getDb().prepare("INSERT INTO users (name, email) VALUES (?, ?)").run(name, email)
 }
 
+export function updateUser(id: number, name: string, email: string): void {
+  getDb().prepare("UPDATE users SET name=?, email=? WHERE id=?").run(name, email, id)
+}
+
 export function deleteUsers(ids: number[]): void {
   if (ids.length === 0) return
   const placeholders = ids.map(() => "?").join(", ")

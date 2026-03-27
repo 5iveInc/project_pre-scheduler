@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addUser, deleteUsers } from "@/database/db"
+import { addUser, updateUser, deleteUsers } from "@/database/db"
 
 export async function addUserAction(formData: FormData) {
   const name = (formData.get("name") as string).trim()
@@ -10,6 +10,16 @@ export async function addUserAction(formData: FormData) {
   if (!name || !email) throw new Error("名前とメールアドレスは必須です")
 
   addUser(name, email)
+  revalidatePath("/user")
+}
+
+export async function updateUserAction(id: number, formData: FormData) {
+  const name = (formData.get("name") as string).trim()
+  const email = (formData.get("email") as string).trim()
+
+  if (!name || !email) throw new Error("名前とメールアドレスは必須です")
+
+  updateUser(id, name, email)
   revalidatePath("/user")
 }
 
