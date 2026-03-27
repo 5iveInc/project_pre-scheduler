@@ -30,6 +30,38 @@ import {
 } from "@/app/project/actions"
 import type { Project, User } from "@/database/db"
 
+// ── チェックボックスグループ ────────────────────────────────
+
+function UserCheckboxGroup({
+  users,
+  name,
+  checkedIds,
+  onChange,
+}: {
+  users: User[]
+  name: string
+  checkedIds: Set<number>
+  onChange: (id: number, checked: boolean) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-input p-3">
+      {users.map((u) => (
+        <label key={u.id} className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name={name}
+            value={u.id}
+            checked={checkedIds.has(u.id)}
+            onChange={(e) => onChange(u.id, e.target.checked)}
+            className="size-4 rounded border-input accent-primary"
+          />
+          {u.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 // ── 共通フォームフィールド ──────────────────────────────────
 
 function ProjectFormFields({
@@ -40,6 +72,7 @@ function ProjectFormFields({
   defaultValues?: {
     name?: string
     assigneeIds?: number[]
+    supportIds?: number[]
     startDate?: string | null
     endDate?: string | null
   }
@@ -50,14 +83,18 @@ function ProjectFormFields({
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
+  const [supportIds, setSupportIds] = useState<Set<number>>(
+    new Set(defaultValues?.supportIds ?? []),
+  )
 
-  function toggleAssignee(id: number, checked: boolean) {
-    setAssigneeIds((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(id)
-      else next.delete(id)
-      return next
-    })
+  function toggle(setter: typeof setAssigneeIds) {
+    return (id: number, checked: boolean) =>
+      setter((prev) => {
+        const next = new Set(prev)
+        if (checked) next.add(id)
+        else next.delete(id)
+        return next
+      })
   }
 
   return (
@@ -74,25 +111,25 @@ function ProjectFormFields({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>アサイン</Label>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-input p-3">
-          {users.map((u) => (
-            <label
-              key={u.id}
-              className="flex cursor-pointer items-center gap-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                name="assigneeId"
-                value={u.id}
-                checked={assigneeIds.has(u.id)}
-                onChange={(e) => toggleAssignee(u.id, e.target.checked)}
-                className="size-4 rounded border-input accent-primary"
-              />
-              {u.name}
-            </label>
-          ))}
+      <div className="flex gap-1">
+        <div className="space-y-1.5 w-full">
+          <Label>アサイン</Label>
+          <UserCheckboxGroup
+            users={users}
+            name="assigneeId"
+            checkedIds={assigneeIds}
+            onChange={toggle(setAssigneeIds)}
+          />
+        </div>
+
+        <div className="space-y-1.5 w-full">
+          <Label>サポート</Label>
+          <UserCheckboxGroup
+            users={users}
+            name="supportId"
+            checkedIds={supportIds}
+            onChange={toggle(setSupportIds)}
+          />
         </div>
       </div>
 
@@ -122,14 +159,22 @@ function ProjectFormFields({
   )
 }
 
-// ── 行（読み取り専用 + 編集モーダル） ─────────────────────────
+// ── テーブル列のアサイン表示ラベル ─────────────────────────
 
-function assigneeLabel(project: Project, users: User[]): string | null {
-  if (project.assignee_ids.length === 0) return null
-  const first = users.find((u) => u.id === project.assignee_ids[0])?.name ?? null
-  if (project.assignee_ids.length === 1) return first
-  return first ? `${first}　他${project.assignee_ids.length - 1}名` : `${project.assignee_ids.length}名`
+function buildAssigneeLabel(project: Project): string | null {
+  const names = project.assignee_names
+  const supportCount = project.support_ids.length
+
+  if (names.length === 0 && supportCount === 0) return null
+
+  const namesPart = names.join(", ")
+  const supportPart = supportCount > 0 ? `他${supportCount}名` : ""
+
+  if (namesPart && supportPart) return `${namesPart} ${supportPart}`
+  return namesPart || supportPart
 }
+
+// ── 行（読み取り専用 + 編集モーダル） ─────────────────────────
 
 function ProjectRow({
   project,
@@ -148,15 +193,16 @@ function ProjectRow({
   function handleSave(formData: FormData) {
     const name = (formData.get("name") as string).trim()
     const assigneeIds = formData.getAll("assigneeId").map(Number).filter(Boolean)
+    const supportIds = formData.getAll("supportId").map(Number).filter(Boolean)
     const startDate = (formData.get("startDate") as string) || null
     const endDate = (formData.get("endDate") as string) || null
     startTransition(async () => {
-      await updateProjectAction(project.id, name, assigneeIds, startDate, endDate)
+      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate)
       setOpen(false)
     })
   }
 
-  const label = assigneeLabel(project, users)
+  const label = buildAssigneeLabel(project)
 
   return (
     <>
@@ -165,10 +211,7 @@ function ProjectRow({
         data-state={checked ? "selected" : undefined}
         onClick={() => setOpen(true)}
       >
-        <TableCell
-          className="pl-6"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
           <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
         </TableCell>
         <TableCell className="font-medium">{project.name}</TableCell>
@@ -184,7 +227,7 @@ function ProjectRow({
       </TableRow>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-300">
           <DialogHeader>
             <DialogTitle>案件を編集</DialogTitle>
           </DialogHeader>
@@ -194,6 +237,7 @@ function ProjectRow({
               defaultValues={{
                 name: project.name,
                 assigneeIds: project.assignee_ids,
+                supportIds: project.support_ids,
                 startDate: project.start_date,
                 endDate: project.end_date,
               }}
@@ -278,7 +322,7 @@ export function ProjectTable({
             <TableRow>
               <TableHead className="w-10 pl-6" />
               <TableHead>案件名</TableHead>
-              <TableHead className="w-48">アサイン</TableHead>
+              <TableHead className="w-56">アサイン / サポート</TableHead>
               <TableHead className="w-36">開始日</TableHead>
               <TableHead className="w-36 pr-6">終了日</TableHead>
             </TableRow>
@@ -308,9 +352,8 @@ export function ProjectTable({
         </Table>
       </CardContent>
 
-      {/* 追加モーダル */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-300">
           <DialogHeader>
             <DialogTitle>案件を追加</DialogTitle>
           </DialogHeader>
