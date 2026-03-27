@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useEffect, useRef } from "react"
 import type { Project, User } from "@/database/db"
 import { updateProjectTimelineAction } from "@/app/timeline/actions"
 import {
@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label"
 const DAY_WIDTH = 32
 const ROW_HEIGHT = 48
 const MONTH_HEADER_HEIGHT = 30
-const DAY_HEADER_HEIGHT = 30
+const DAY_HEADER_HEIGHT = 44
 const LEFT_COL_WIDTH = 200
 
 const BAR_COLORS = [
@@ -239,6 +239,14 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
   const todayIndex = dayDiff(start, todayLocal)
   const showTodayLine = todayIndex >= 0 && todayIndex < totalDays
 
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (scrollRef.current && todayIndex > 0) {
+      scrollRef.current.scrollLeft = todayIndex * DAY_WIDTH
+    }
+  }, [todayIndex])
+
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -262,8 +270,18 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
     })
   }
 
-  // 縦グリッド線用の CSS background-image
-  const gridBg = `repeating-linear-gradient(to right, transparent, transparent ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH}px)`
+  // 縦グリッド線 + 週末列の背景を background-image で合成
+  const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH}px)`
+  const weekendBands = dates
+    .map((d, i) => {
+      if (d.getDay() !== 0 && d.getDay() !== 6) return null
+      const l = i * DAY_WIDTH
+      const r = l + DAY_WIDTH
+      return `linear-gradient(to right, transparent ${l}px, #d1d5db ${l}px, #d1d5db ${r}px, transparent ${r}px)`
+    })
+    .filter(Boolean)
+    .join(", ")
+  const rowBg = weekendBands ? `${gridLine}, ${weekendBands}` : gridLine
 
   return (
     <>
@@ -309,7 +327,7 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
           </div>
 
           {/* ── 右スクロール領域 ── */}
-          <div className="overflow-x-auto flex-1">
+          <div ref={scrollRef} className="overflow-x-auto flex-1">
             <div style={{ width: totalWidth, minWidth: totalWidth }}>
 
               {/* 月ヘッダー */}
@@ -335,15 +353,16 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
                       key={i}
                       style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
                       className={[
-                        "border-r last:border-r-0 flex items-center justify-center text-[10px] select-none font-medium",
+                        "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] select-none font-medium leading-tight",
                         isToday
                           ? "bg-blue-500 text-white"
                           : isWeekend
-                          ? "bg-muted/40 text-muted-foreground"
+                          ? "bg-gray-300 text-muted-foreground"
                           : "text-muted-foreground",
                       ].join(" ")}
                     >
-                      {d.getDate()}
+                      <span>{d.getDate()}</span>
+                      <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
                     </div>
                   )
                 })}
@@ -384,7 +403,7 @@ export function TimelineView({ projects, users }: { projects: Project[]; users: 
                         height: ROW_HEIGHT,
                         width: totalWidth,
                         position: "relative",
-                        backgroundImage: gridBg,
+                        backgroundImage: rowBg,
                       }}
                       className="border-b last:border-b-0"
                     >
