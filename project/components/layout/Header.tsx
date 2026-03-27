@@ -1,30 +1,16 @@
-// import styles from './xxx.module.scss';
-import Link from "next/link";
+"use client"
 
-// type Props = {
-//     // children: React.ReactNode;
-// };
+import { SidebarTrigger } from "@/components/ui/sidebar"
+import { Separator } from "@/components/ui/separator"
 
 const Header = () => {
-    return (
-        <header className="bg-gray-200">
-            <div className="flex gap-10 justify-between items-center px-5 py-5">
-                <h1 className="text-3xl font-bold">Logo</h1>
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+      <SidebarTrigger className="-ml-1" />
+      <Separator orientation="vertical" className="mr-2 h-full" />
+      <span className="text-sm font-medium text-muted-foreground">5ive Project Management</span>
+    </header>
+  )
+}
 
-                <ul className="flex gap-5">
-                    <li className="">
-                        <Link href="/" className="font-bold">HOME</Link>
-                    </li>
-                    <li className="">
-                        <Link href="/user" className="font-bold">ユーザー一覧</Link>
-                    </li>
-                    <li className="">
-                        <Link href="/project" className="font-bold">案件一覧</Link>
-                    </li>
-                </ul>
-            </div>
-        </header>
-    );
-};
-
-export default Header;
+export default Header
