@@ -16,7 +16,6 @@ import { Label } from "@/components/ui/label"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from "lucide-react"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
-type SortOrder = "asc" | "desc"
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "id", label: "登録順" },
@@ -26,7 +25,9 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ]
 
 // ── 定数 ───────────────────────────────────────────────────
-const DAY_WIDTH = 32
+const DEFAULT_DAY_WIDTH = 32
+const MIN_DAY_WIDTH = 17
+const MAX_DAY_WIDTH = 55
 const ROW_HEIGHT = 48
 const MONTH_HEADER_HEIGHT = 30
 const DAY_HEADER_HEIGHT = 44
@@ -292,7 +293,6 @@ export function TimelineView({
   const dates = getDates(start, end)
   const monthGroups = getMonthGroups(dates)
   const totalDays = dates.length
-  const totalWidth = totalDays * DAY_WIDTH
 
   const todayLocal = new Date()
   todayLocal.setHours(0, 0, 0, 0)
@@ -301,11 +301,40 @@ export function TimelineView({
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // ── 日幅（ドラッグで可変）──
+  const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  const totalWidth = totalDays * dayWidth
+
   useEffect(() => {
     if (scrollRef.current && todayIndex > 0) {
-      scrollRef.current.scrollLeft = todayIndex * DAY_WIDTH
+      scrollRef.current.scrollLeft = todayIndex * dayWidth
     }
+    // dayWidth 変化時は再スクロールしない（意図した表示位置を保持）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todayIndex])
+
+  function handleDayHeaderMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    dragRef.current = { startX: e.clientX, startWidth: dayWidth }
+
+    function onMouseMove(ev: MouseEvent) {
+      if (!dragRef.current) return
+      const delta = ev.clientX - dragRef.current.startX
+      const next = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, dragRef.current.startWidth + delta * 0.3))
+      setDayWidth(next)
+    }
+
+    function onMouseUp() {
+      dragRef.current = null
+      document.removeEventListener("mousemove", onMouseMove)
+      document.removeEventListener("mouseup", onMouseUp)
+    }
+
+    document.addEventListener("mousemove", onMouseMove)
+    document.addEventListener("mouseup", onMouseUp)
+  }
 
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -420,12 +449,12 @@ export function TimelineView({
   }
 
   // 縦グリッド線 + 休日列（土日・祝日）の背景を background-image で合成
-  const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH - 1}px, #e5e7eb ${DAY_WIDTH}px)`
+  const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${dayWidth - 1}px, #e5e7eb ${dayWidth - 1}px, #e5e7eb ${dayWidth}px)`
   const restBands = dates
     .map((d, i) => {
       if (!isRestDay(d)) return null
-      const l = i * DAY_WIDTH
-      const r = l + DAY_WIDTH
+      const l = i * dayWidth
+      const r = l + dayWidth
       return `linear-gradient(to right, transparent ${l}px, #d1d5db ${l}px, #d1d5db ${r}px, transparent ${r}px)`
     })
     .filter(Boolean)
@@ -555,7 +584,7 @@ export function TimelineView({
                 {monthGroups.map((mg, i) => (
                   <div
                     key={i}
-                    style={{ width: mg.days * DAY_WIDTH, minWidth: mg.days * DAY_WIDTH }}
+                    style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
                     className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
                   >
                     {mg.label}
@@ -563,16 +592,20 @@ export function TimelineView({
                 ))}
               </div>
 
-              {/* 日ヘッダー */}
-              <div className="flex border-b" style={{ height: DAY_HEADER_HEIGHT }}>
+              {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
+              <div
+                className="flex border-b select-none cursor-ew-resize"
+                style={{ height: DAY_HEADER_HEIGHT }}
+                onMouseDown={handleDayHeaderMouseDown}
+              >
                 {dates.map((d, i) => {
                   const isToday = i === todayIndex
                   return (
                     <div
                       key={i}
-                      style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                      style={{ width: dayWidth, minWidth: dayWidth }}
                       className={[
-                        "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] select-none font-medium leading-tight",
+                        "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
                         isToday
                           ? "bg-green-500 text-white"
                           : isRestDay(d)
@@ -581,7 +614,9 @@ export function TimelineView({
                       ].join(" ")}
                     >
                       <span>{d.getDate()}</span>
-                      <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                      {dayWidth >= 24 && (
+                        <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                      )}
                     </div>
                   )
                 })}
@@ -608,8 +643,8 @@ export function TimelineView({
                     const clampedStart = Math.max(0, startIdx)
                     const clampedEnd = Math.min(totalDays - 1, endIdx)
                     if (clampedStart <= clampedEnd) {
-                      barLeft = clampedStart * DAY_WIDTH + 3
-                      barWidth = (clampedEnd - clampedStart + 1) * DAY_WIDTH - 6
+                      barLeft = clampedStart * dayWidth + 3
+                      barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                     }
                   }
 
@@ -631,8 +666,8 @@ export function TimelineView({
                         <div
                           className="absolute top-0 bottom-0 pointer-events-none"
                           style={{
-                            left: todayIndex * DAY_WIDTH,
-                            width: DAY_WIDTH,
+                            left: todayIndex * dayWidth,
+                            width: dayWidth,
                             backgroundColor: "rgba(74,222,128,0.3)",
                           }}
                         />
