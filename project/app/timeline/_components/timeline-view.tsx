@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef } from "react"
 import type { Project, User } from "@/database/db"
-import { updateProjectTimelineAction } from "@/app/timeline/actions"
+import { updateProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
 import {
   Dialog,
   DialogContent,
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Settings2Icon, PlusIcon, Trash2Icon } from "lucide-react"
 
 // ── 定数 ───────────────────────────────────────────────────
 const DAY_WIDTH = 32
@@ -246,12 +247,14 @@ export function TimelineView({
   projects,
   users,
   holidays,
+  customHolidays,
 }: {
   projects: Project[]
   users: User[]
   holidays: string[]
+  customHolidays: string[]
 }) {
-  const holidaySet = new Set(holidays)
+  const holidaySet = new Set([...holidays, ...customHolidays])
   const { start, end } = getDisplayRange(projects)
   const dates = getDates(start, end)
   const monthGroups = getMonthGroups(dates)
@@ -272,7 +275,31 @@ export function TimelineView({
   }, [todayIndex])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [customDates, setCustomDates] = useState<string[]>(customHolidays)
   const [isPending, startTransition] = useTransition()
+
+  function handleSettingsSave() {
+    const valid = customDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    startTransition(async () => {
+      await saveCustomHolidaysAction(valid)
+      setSettingsOpen(false)
+    })
+  }
+
+  function addCustomDate() {
+    const today = new Date()
+    const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    setCustomDates((prev) => [...prev, ymd])
+  }
+
+  function updateCustomDate(index: number, value: string) {
+    setCustomDates((prev) => prev.map((d, i) => (i === index ? value : d)))
+  }
+
+  function removeCustomDate(index: number) {
+    setCustomDates((prev) => prev.filter((_, i) => i !== index))
+  }
 
   function handleSave(formData: FormData) {
     if (!editProject) return
@@ -319,6 +346,14 @@ export function TimelineView({
 
   return (
     <>
+      {/* ── 設定ボタン ── */}
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+          <Settings2Icon className="size-4" />
+          設定
+        </Button>
+      </div>
+
       <div className="rounded-lg border overflow-hidden bg-background">
         <div className="flex">
           {/* ── 左固定列 ── */}
@@ -506,6 +541,56 @@ export function TimelineView({
               </DialogFooter>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 設定モーダル ── */}
+      <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) setSettingsOpen(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>設定</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* 休日セクション */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">休日</h3>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">カスタム休日</Label>
+                <div className="space-y-2">
+                  {customDates.map((date, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={date}
+                        onChange={(e) => updateCustomDate(i, e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeCustomDate(i)}
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2Icon className="size-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addCustomDate}>
+                  <PlusIcon className="size-4" />
+                  日付を追加
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button onClick={handleSettingsSave} disabled={isPending}>
+              保存する
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

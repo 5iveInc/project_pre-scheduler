@@ -1,7 +1,12 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { updateProject } from "@/database/db"
+import { updateProject, setCustomHolidays } from "@/database/db"
+
+export async function saveCustomHolidaysAction(dates: string[]) {
+  setCustomHolidays(dates)
+  revalidatePath("/timeline")
+}
 
 export async function updateProjectTimelineAction(
   id: number,

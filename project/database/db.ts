@@ -66,6 +66,12 @@ function initSchema(db: Database.Database) {
     db.exec(`ALTER TABLE projects ADD COLUMN memo TEXT`)
   }
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_holidays (
+      date TEXT PRIMARY KEY
+    )
+  `)
+
   const count = (db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number }).count
   if (count === 0) {
     const insert = db.prepare("INSERT INTO users (name, email) VALUES (?, ?)")
@@ -220,4 +226,23 @@ export function deleteProjects(ids: number[]): void {
   if (ids.length === 0) return
   const placeholders = ids.map(() => "?").join(", ")
   getDb().prepare(`DELETE FROM projects WHERE id IN (${placeholders})`).run(...ids)
+}
+
+// ── Custom Holidays ────────────────────────────────────────
+
+export function getCustomHolidays(): string[] {
+  return (getDb().prepare("SELECT date FROM custom_holidays ORDER BY date ASC").all() as { date: string }[]).map(
+    (r) => r.date,
+  )
+}
+
+export function setCustomHolidays(dates: string[]): void {
+  const db = getDb()
+  const valid = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+  const deleteAll = db.prepare("DELETE FROM custom_holidays")
+  const insert = db.prepare("INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)")
+  db.transaction(() => {
+    deleteAll.run()
+    for (const date of valid) insert.run(date)
+  })()
 }
