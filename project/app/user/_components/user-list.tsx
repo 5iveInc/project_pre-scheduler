@@ -135,7 +135,7 @@ export function UserList({ users }: { users: User[] }) {
                 <TableCell className="font-medium">{user.name}</TableCell>
                 <TableCell className="text-muted-foreground">{user.email}</TableCell>
                 <TableCell className="pr-6 text-right text-muted-foreground">
-                  {new Date(user.created_at).toLocaleDateString("ja-JP")}
+                  {user.created_at.slice(0, 10).replace(/-/g, "/")}
                 </TableCell>
               </TableRow>
             ))}
