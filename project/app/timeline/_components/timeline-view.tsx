@@ -142,11 +142,13 @@ function ProjectFormFields({
     supportIds?: number[]
     startDate?: string | null
     endDate?: string | null
+    memo?: string | null
   }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
+  const [memo, setMemo] = useState(defaultValues?.memo ?? "")
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
@@ -221,6 +223,19 @@ function ProjectFormFields({
           />
         </div>
       </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="memo">メモ</Label>
+        <textarea
+          id="memo"
+          name="memo"
+          rows={4}
+          placeholder="自由記述"
+          value={memo ?? ""}
+          onChange={(e) => setMemo(e.target.value)}
+          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-none"
+        />
+      </div>
     </>
   )
 }
@@ -266,6 +281,7 @@ export function TimelineView({
     const supportIds = formData.getAll("supportId").map(Number).filter(Boolean)
     const startDate = (formData.get("startDate") as string) || null
     const endDate = (formData.get("endDate") as string) || null
+    const memo = (formData.get("memo") as string) || null
     startTransition(async () => {
       await updateProjectTimelineAction(
         editProject.id,
@@ -274,6 +290,7 @@ export function TimelineView({
         supportIds,
         startDate,
         endDate,
+        memo,
       )
       setEditProject(null)
     })
@@ -479,6 +496,7 @@ export function TimelineView({
                   supportIds: editProject.support_ids,
                   startDate: editProject.start_date,
                   endDate: editProject.end_date,
+                  memo: editProject.memo,
                 }}
               />
               <DialogFooter>

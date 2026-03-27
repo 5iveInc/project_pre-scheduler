@@ -61,6 +61,11 @@ function initSchema(db: Database.Database) {
     db.exec(`ALTER TABLE projects DROP COLUMN assignee_id`)
   }
 
+  // migration: memo 列がなければ追加
+  if (!columns.some((c) => c.name === "memo")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN memo TEXT`)
+  }
+
   const count = (db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number }).count
   if (count === 0) {
     const insert = db.prepare("INSERT INTO users (name, email) VALUES (?, ?)")
@@ -118,6 +123,7 @@ export type Project = {
   support_names: string[]
   start_date: string | null
   end_date: string | null
+  memo: string | null
   created_at: string
 }
 
@@ -130,13 +136,14 @@ type RawProject = {
   support_names_str: string | null
   start_date: string | null
   end_date: string | null
+  memo: string | null
   created_at: string
 }
 
 export function getProjects(): Project[] {
   const rows = getDb().prepare(`
     SELECT
-      p.id, p.name, p.start_date, p.end_date, p.created_at,
+      p.id, p.name, p.start_date, p.end_date, p.memo, p.created_at,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
@@ -160,6 +167,7 @@ export function getProjects(): Project[] {
     support_names: row.support_names_str ? row.support_names_str.split("|||") : [],
     start_date: row.start_date,
     end_date: row.end_date,
+    memo: row.memo,
     created_at: row.created_at,
   }))
 }
@@ -180,11 +188,12 @@ export function addProject(
   supportIds: number[],
   startDate: string | null,
   endDate: string | null,
+  memo: string | null,
 ): void {
   const db = getDb()
   const { lastInsertRowid } = db
-    .prepare("INSERT INTO projects (name, start_date, end_date) VALUES (?, ?, ?)")
-    .run(name, startDate, endDate)
+    .prepare("INSERT INTO projects (name, start_date, end_date, memo) VALUES (?, ?, ?, ?)")
+    .run(name, startDate, endDate, memo)
   insertJunction(db, "project_assignees", lastInsertRowid, assigneeIds)
   insertJunction(db, "project_supports", lastInsertRowid, supportIds)
 }
@@ -196,10 +205,11 @@ export function updateProject(
   supportIds: number[],
   startDate: string | null,
   endDate: string | null,
+  memo: string | null,
 ): void {
   const db = getDb()
-  db.prepare("UPDATE projects SET name=?, start_date=?, end_date=? WHERE id=?")
-    .run(name, startDate, endDate, id)
+  db.prepare("UPDATE projects SET name=?, start_date=?, end_date=?, memo=? WHERE id=?")
+    .run(name, startDate, endDate, memo, id)
   db.prepare("DELETE FROM project_assignees WHERE project_id=?").run(id)
   db.prepare("DELETE FROM project_supports WHERE project_id=?").run(id)
   insertJunction(db, "project_assignees", id, assigneeIds)

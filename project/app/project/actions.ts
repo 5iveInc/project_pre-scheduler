@@ -9,10 +9,11 @@ export async function addProjectAction(formData: FormData) {
   const supportIds = formData.getAll("supportId").map(Number).filter(Boolean)
   const startDate = (formData.get("startDate") as string) || null
   const endDate = (formData.get("endDate") as string) || null
+  const memo = (formData.get("memo") as string) || null
 
   if (!name) throw new Error("案件名は必須です")
 
-  addProject(name, assigneeIds, supportIds, startDate, endDate)
+  addProject(name, assigneeIds, supportIds, startDate, endDate, memo)
   revalidatePath("/project")
 }
 
@@ -23,9 +24,10 @@ export async function updateProjectAction(
   supportIds: number[],
   startDate: string | null,
   endDate: string | null,
+  memo: string | null,
 ) {
   if (!name.trim()) return
-  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null)
+  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo)
   revalidatePath("/project")
 }
 
