@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect, useRef } from "react"
+import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
 import { updateProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
 import {
@@ -13,7 +13,17 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Settings2Icon, PlusIcon, Trash2Icon } from "lucide-react"
+import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from "lucide-react"
+
+type SortKey = "id" | "volume" | "start_date" | "end_date"
+type SortOrder = "asc" | "desc"
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "id", label: "登録順" },
+  { key: "volume", label: "レベル（ボリューム）" },
+  { key: "start_date", label: "開始日" },
+  { key: "end_date", label: "終了日" },
+]
 
 // ── 定数 ───────────────────────────────────────────────────
 const DAY_WIDTH = 32
@@ -302,6 +312,59 @@ export function TimelineView({
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
   const [isPending, startTransition] = useTransition()
 
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
+        setSortMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [sortMenuOpen])
+
+  const sortedProjects = useMemo(() => {
+    if (!sortKey) return projects
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    return [...projects].sort((a, b) => {
+      if (sortKey === "id") {
+        return sortOrder === "asc" ? a.id - b.id : b.id - a.id
+      }
+      if (sortKey === "volume") {
+        const av = a.volume ?? -1
+        const bv = b.volume ?? -1
+        if (av === -1 && bv === -1) return 0
+        if (av === -1) return 1
+        if (bv === -1) return -1
+        return sortOrder === "asc" ? av - bv : bv - av
+      }
+      const aDate = sortKey === "start_date" ? a.start_date : a.end_date
+      const bDate = sortKey === "start_date" ? b.start_date : b.end_date
+      if (!aDate && !bDate) return 0
+      if (!aDate) return 1
+      if (!bDate) return -1
+      const aDiff = Math.abs(dayDiff(today, parseLocalDate(aDate)))
+      const bDiff = Math.abs(dayDiff(today, parseLocalDate(bDate)))
+      return sortOrder === "asc" ? aDiff - bDiff : bDiff - aDiff
+    })
+  }, [projects, sortKey, sortOrder])
+
+  function handleSortOption(key: SortKey) {
+    if (sortKey === key) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
+    } else {
+      setSortKey(key)
+      setSortOrder("asc")
+    }
+    setSortMenuOpen(false)
+  }
+
   function handleSettingsSave() {
     const valid = customDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
     startTransition(async () => {
@@ -371,8 +434,64 @@ export function TimelineView({
 
   return (
     <>
-      {/* ── 設定ボタン ── */}
-      <div className="flex justify-end mb-2">
+      {/* ── ツールバー ── */}
+      <div className="flex justify-end gap-2 mb-2">
+        {/* ソートボタン */}
+        <div ref={sortMenuRef} className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSortMenuOpen((prev) => !prev)}
+            className={sortKey ? "border-primary text-primary" : ""}
+          >
+            {sortKey ? (
+              sortOrder === "asc" ? <ArrowUpIcon className="size-4" /> : <ArrowDownIcon className="size-4" />
+            ) : (
+              <ArrowUpDownIcon className="size-4" />
+            )}
+            並び替え
+          </Button>
+          {sortMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border bg-background shadow-md py-1">
+              {SORT_OPTIONS.map(({ key, label }) => (
+                <div key={key}>
+                  <button
+                    type="button"
+                    className={[
+                      "w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted transition-colors",
+                      sortKey === key ? "text-primary font-medium" : "text-foreground",
+                    ].join(" ")}
+                    onClick={() => handleSortOption(key)}
+                  >
+                    <span>{label}</span>
+                    {sortKey === key ? (
+                      sortOrder === "asc" ? (
+                        <ArrowUpIcon className="size-3.5 shrink-0" />
+                      ) : (
+                        <ArrowDownIcon className="size-3.5 shrink-0" />
+                      )
+                    ) : (
+                      <ArrowUpDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                </div>
+              ))}
+              {sortKey && (
+                <>
+                  <div className="my-1 border-t" />
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
+                    onClick={() => { setSortKey(null); setSortMenuOpen(false) }}
+                  >
+                    <CheckIcon className="size-3.5" />
+                    並び替えをリセット
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
         <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
           <Settings2Icon className="size-4" />
           設定
@@ -407,7 +526,7 @@ export function TimelineView({
                 案件なし
               </div>
             ) : (
-              projects.map((p) => (
+              sortedProjects.map((p) => (
                 <button
                   key={p.id}
                   type="button"
@@ -477,7 +596,7 @@ export function TimelineView({
                   案件がありません。「案件一覧」から登録してください。
                 </div>
               ) : (
-                projects.map((p) => {
+                sortedProjects.map((p) => {
                   let barLeft: number | null = null
                   let barWidth: number | null = null
 
