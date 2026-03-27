@@ -6,9 +6,9 @@ export default function UserPage() {
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="mx-auto max-w-4xl space-y-6">
+      <div className="mx-auto space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">ユーザー管理</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">ユーザー一覧</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             登録済みユーザーの一覧です。
           </p>
