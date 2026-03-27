@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
-import { updateProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
+import { addProjectTimelineAction, updateProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
 import {
   Dialog,
   DialogContent,
@@ -387,9 +387,17 @@ export function TimelineView({
   }, [activeTab])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
   const [isPending, startTransition] = useTransition()
+
+  function handleAdd(formData: FormData) {
+    startTransition(async () => {
+      await addProjectTimelineAction(formData)
+      setAddOpen(false)
+    })
+  }
 
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
@@ -778,6 +786,14 @@ export function TimelineView({
           </div>
         </div>
       </div>
+      <button
+        type="button"
+        onClick={() => setAddOpen(true)}
+        className="mt-2 w-full rounded-lg border border-dashed border-input py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
+      >
+        <PlusIcon className="inline-block size-4 mr-1 align-text-bottom" />
+        案件を追加
+      </button>
       </>
       )}
 
@@ -947,6 +963,14 @@ export function TimelineView({
                 </div>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="mt-2 w-full rounded-lg border border-dashed border-input py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
+            >
+              <PlusIcon className="inline-block size-4 mr-1 align-text-bottom" />
+              案件を追加
+            </button>
           </>
         )
       })()}
@@ -1028,6 +1052,23 @@ export function TimelineView({
               保存する
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 案件追加モーダル ── */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-300">
+          <DialogHeader>
+            <DialogTitle>案件を追加</DialogTitle>
+          </DialogHeader>
+          <form key={String(addOpen)} action={handleAdd} className="space-y-4">
+            <ProjectFormFields users={users} />
+            <DialogFooter>
+              <Button type="submit" disabled={isPending}>
+                追加する
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>
