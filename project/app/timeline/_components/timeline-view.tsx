@@ -336,6 +336,8 @@ export function TimelineView({
     document.addEventListener("mouseup", onMouseUp)
   }
 
+  const [activeTab, setActiveTab] = useState("project")
+
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
@@ -461,8 +463,36 @@ export function TimelineView({
     .join(", ")
   const rowBg = restBands ? `${gridLine}, ${restBands}` : gridLine
 
+  const TABS = [
+    { id: "project", label: "案件" },
+    { id: "assign", label: "担当" },
+  ]
+
   return (
     <>
+      {/* ── タブ ── */}
+      <div className="border-b mb-4">
+        <div className="flex gap-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={[
+                "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                activeTab === tab.id
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "project" && (
+      <>
       {/* ── ツールバー ── */}
       <div className="flex justify-end gap-2 mb-2">
         {/* ソートボタン */}
@@ -700,6 +730,8 @@ export function TimelineView({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* 編集モーダル */}
       <Dialog open={editProject !== null} onOpenChange={(open) => !open && setEditProject(null)}>
