@@ -5,7 +5,7 @@ export default function UserPage() {
   const users = getUsers()
 
   return (
-    <main>
+    <div className="main">
       <div className="bg-background p-8">
         <div className="mx-auto space-y-6">
           <div>
@@ -18,6 +18,6 @@ export default function UserPage() {
           <UserList users={users} />
         </div>
       </div>
-    </main>
+    </div>
   )
 }

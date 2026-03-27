@@ -6,7 +6,7 @@ export default function ProjectPage() {
   const users = getUsers()
 
   return (
-    <main>
+    <div className="main">
       <div className="bg-background p-8">
         <div className="mx-auto space-y-6">
           <div>
@@ -19,6 +19,6 @@ export default function ProjectPage() {
           <ProjectTable projects={projects} users={users} />
         </div>
       </div>
-    </main>
+    </div>
   )
 }

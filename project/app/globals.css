@@ -20,6 +20,20 @@
 
 html {}
 
+/* shadcnのサイドバー */
+main {
+  width: 100%;
+  max-width: calc(100% - var(--sidebar-width));
+  transition: max-width 200ms linear;
+}
+
+[data-slot="sidebar"][data-state="collapsed"] ~ main {
+  max-width: 100%;
+}
+/******************/
+
+.main {}
+
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: var(--font-sans);

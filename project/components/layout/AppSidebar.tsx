@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { HomeIcon, UsersIcon, FolderIcon } from "lucide-react"
+import { HomeIcon, UsersIcon, FolderIcon, GanttChartIcon } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +16,7 @@ const navItems = [
   { href: "/", label: "ホーム", icon: HomeIcon },
   { href: "/user", label: "ユーザー一覧", icon: UsersIcon },
   { href: "/project", label: "案件一覧", icon: FolderIcon },
+  { href: "/timeline", label: "タイムライン", icon: GanttChartIcon },
 ]
 
 export function AppSidebar() {
