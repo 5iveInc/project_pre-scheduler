@@ -433,6 +433,11 @@ export function TimelineView({
     setViewMode(mode)
   }
 
+  // ── 月ビュー：列幅（1画面に6ヶ月）──
+  const monthViewScrollRef = useRef<HTMLDivElement>(null)
+  const [monthColWidth, setMonthColWidth] = useState(160)
+  const monthViewScrollInitialized = useRef(false)
+
   // ── 日幅（ドラッグで可変）──
   const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -501,6 +506,23 @@ export function TimelineView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
+
+  useEffect(() => {
+    monthViewScrollInitialized.current = false
+    const el = monthViewScrollRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const colWidth = Math.floor(entry.contentRect.width / 6)
+      setMonthColWidth(colWidth)
+      if (!monthViewScrollInitialized.current) {
+        monthViewScrollInitialized.current = true
+        // monthViewMonths[0] = 前月、[1] = 現在月 なので index=1 にスクロール
+        el.scrollLeft = 1 * colWidth
+      }
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [viewMode, activeTab])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [addOpen, setAddOpen] = useState(false)
@@ -677,12 +699,13 @@ export function TimelineView({
     .filter(Boolean)
     .join(", ")
   const rowBg = restBands ? `${gridLine}, ${restBands}` : gridLine
+  const totalMonthWidth = monthColWidth * 12
 
   const monthViewMonths = useMemo<MonthViewMonth[]>(() => {
     const today = new Date()
     const baseYear = today.getFullYear()
     const baseMonth = today.getMonth() - 1
-    return Array.from({ length: 6 }, (_, i) => {
+    return Array.from({ length: 12 }, (_, i) => {
       const d = new Date(baseYear, baseMonth + i, 1)
       return {
         year: d.getFullYear(),
@@ -909,86 +932,89 @@ export function TimelineView({
                 ))
               )}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
-                {monthViewMonths.map((m) => (
-                  <div
-                    key={m.label}
-                    className="flex-1 min-w-0 border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
-                  >
-                    {m.label}
-                  </div>
-                ))}
-              </div>
-              {visibleProjects.length === 0 ? (
-                <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
-                  案件がありません。「案件一覧」から登録してください。
-                </div>
-              ) : (
-                visibleProjects.map((p) => {
-                  const barInfo = calcMonthViewBar(p, monthViewMonths)
-                  const barColor = barColorFromVolume(p.volume)
-                  const keyDateEntries = Object.entries(
-                    p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                      if (!kd.date) return acc
-                      ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                      return acc
-                    }, {}),
-                  )
-                  return (
+            <div ref={monthViewScrollRef} className="overflow-x-auto flex-1">
+              <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
+                <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                  {monthViewMonths.map((m) => (
                     <div
-                      key={p.id}
-                      style={{ height: ROW_HEIGHT }}
-                      className="relative flex border-b last:border-b-0"
+                      key={m.label}
+                      style={{ width: monthColWidth, minWidth: monthColWidth }}
+                      className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
                     >
-                      {monthViewMonths.map((m) => (
-                        <div key={m.label} className="flex-1 min-w-0 border-r last:border-r-0" />
-                      ))}
-                      {barInfo && (
-                        <div
-                          className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                          style={{
-                            left: `${barInfo.leftPct}%`,
-                            width: `${barInfo.widthPct}%`,
-                            top: 10,
-                            bottom: 10,
-                            backgroundColor: barColor,
-                          }}
-                          onClick={() => setEditProject(p)}
-                          title={`${p.name}（クリックで編集）`}
-                        >
-                          <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                            {p.name}
-                          </span>
-                        </div>
-                      )}
-                      {keyDateEntries.map(([date, labels]) => {
-                        const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
-                        if (centerPct === null) return null
-                        return (
-                          <TooltipProvider key={date}>
-                            <Tooltip>
-                              <TooltipTrigger
-                                className="absolute rounded-full z-10 cursor-default"
-                                style={{
-                                  left: `calc(${centerPct}% - 5px)`,
-                                  top: ROW_HEIGHT / 2 - 5,
-                                  width: 10,
-                                  height: 10,
-                                  backgroundColor: "#ef4444",
-                                }}
-                              />
-                              <TooltipContent>
-                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )
-                      })}
+                      {m.label}
                     </div>
-                  )
-                })
-              )}
+                  ))}
+                </div>
+                {visibleProjects.length === 0 ? (
+                  <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
+                    案件がありません。「案件一覧」から登録してください。
+                  </div>
+                ) : (
+                  visibleProjects.map((p) => {
+                    const barInfo = calcMonthViewBar(p, monthViewMonths)
+                    const barColor = barColorFromVolume(p.volume)
+                    const keyDateEntries = Object.entries(
+                      p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                        if (!kd.date) return acc
+                        ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                        return acc
+                      }, {}),
+                    )
+                    return (
+                      <div
+                        key={p.id}
+                        style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
+                        className="flex border-b last:border-b-0"
+                      >
+                        {monthViewMonths.map((m) => (
+                          <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                        ))}
+                        {barInfo && (
+                          <div
+                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            style={{
+                              left: `${barInfo.leftPct}%`,
+                              width: `${barInfo.widthPct}%`,
+                              top: 10,
+                              bottom: 10,
+                              backgroundColor: barColor,
+                            }}
+                            onClick={() => setEditProject(p)}
+                            title={`${p.name}（クリックで編集）`}
+                          >
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                              {p.name}
+                            </span>
+                          </div>
+                        )}
+                        {keyDateEntries.map(([date, labels]) => {
+                          const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
+                          if (centerPct === null) return null
+                          return (
+                            <TooltipProvider key={date}>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  className="absolute rounded-full z-10 cursor-default"
+                                  style={{
+                                    left: `calc(${centerPct}% - 5px)`,
+                                    top: ROW_HEIGHT / 2 - 5,
+                                    width: 10,
+                                    height: 10,
+                                    backgroundColor: "#ef4444",
+                                  }}
+                                />
+                                <TooltipContent>
+                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1361,90 +1387,93 @@ export function TimelineView({
                       ))
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
-                      {monthViewMonths.map((m) => (
-                        <div
-                          key={m.label}
-                          className="flex-1 min-w-0 border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
-                        >
-                          {m.label}
-                        </div>
-                      ))}
-                    </div>
-                    {userLaneData.length === 0 ? (
-                      <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
-                        担当者が割り当てられた案件がありません。
+                  <div ref={monthViewScrollRef} className="overflow-x-auto flex-1">
+                    <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
+                      <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                        {monthViewMonths.map((m) => (
+                          <div
+                            key={m.label}
+                            style={{ width: monthColWidth, minWidth: monthColWidth }}
+                            className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                          >
+                            {m.label}
+                          </div>
+                        ))}
                       </div>
-                    ) : (
-                      userLaneData.map(({ user: u, assignments, rowHeight }) => (
-                        <div
-                          key={u.id}
-                          style={{ height: rowHeight }}
-                          className="relative flex border-b last:border-b-0"
-                        >
-                          {monthViewMonths.map((m) => (
-                            <div key={m.label} className="flex-1 min-w-0 border-r last:border-r-0" />
-                          ))}
-                          {assignments.map(({ project: p, lane }) => {
-                            const barInfo = calcMonthViewBar(p, monthViewMonths)
-                            if (!barInfo) return null
-                            const barTop = lane * ROW_HEIGHT + 10
-                            const barHeight = ROW_HEIGHT - 20
-                            const keyDateEntries = Object.entries(
-                              p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                                if (!kd.date) return acc
-                                ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                                return acc
-                              }, {}),
-                            )
-                            return (
-                              <div key={p.id}>
-                                <div
-                                  className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                  style={{
-                                    left: `${barInfo.leftPct}%`,
-                                    width: `${barInfo.widthPct}%`,
-                                    top: barTop,
-                                    height: barHeight,
-                                    backgroundColor: barColorFromVolume(p.volume),
-                                  }}
-                                  onClick={() => setEditProject(p)}
-                                  title={`${p.name}（クリックで編集）`}
-                                >
-                                  <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                    {p.name}
-                                  </span>
-                                </div>
-                                {keyDateEntries.map(([date, labels]) => {
-                                  const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
-                                  if (centerPct === null) return null
-                                  return (
-                                    <TooltipProvider key={date}>
-                                      <Tooltip>
-                                        <TooltipTrigger
-                                          className="absolute rounded-full z-10 cursor-default"
-                                          style={{
-                                            left: `calc(${centerPct}% - 5px)`,
-                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
-                                            width: 10,
-                                            height: 10,
-                                            backgroundColor: "#ef4444",
-                                          }}
-                                        />
-                                        <TooltipContent>
-                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )
-                                })}
-                              </div>
-                            )
-                          })}
+                      {userLaneData.length === 0 ? (
+                        <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
+                          担当者が割り当てられた案件がありません。
                         </div>
-                      ))
-                    )}
+                      ) : (
+                        userLaneData.map(({ user: u, assignments, rowHeight }) => (
+                          <div
+                            key={u.id}
+                            style={{ height: rowHeight, width: totalMonthWidth, position: "relative" }}
+                            className="flex border-b last:border-b-0"
+                          >
+                            {monthViewMonths.map((m) => (
+                              <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                            ))}
+                            {assignments.map(({ project: p, lane }) => {
+                              const barInfo = calcMonthViewBar(p, monthViewMonths)
+                              if (!barInfo) return null
+                              const barTop = lane * ROW_HEIGHT + 10
+                              const barHeight = ROW_HEIGHT - 20
+                              const keyDateEntries = Object.entries(
+                                p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                                  if (!kd.date) return acc
+                                  ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                                  return acc
+                                }, {}),
+                              )
+                              return (
+                                <div key={p.id}>
+                                  <div
+                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    style={{
+                                      left: `${barInfo.leftPct}%`,
+                                      width: `${barInfo.widthPct}%`,
+                                      top: barTop,
+                                      height: barHeight,
+                                      backgroundColor: barColorFromVolume(p.volume),
+                                    }}
+                                    onClick={() => setEditProject(p)}
+                                    title={`${p.name}（クリックで編集）`}
+                                  >
+                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                      {p.name}
+                                    </span>
+                                  </div>
+                                  {keyDateEntries.map(([date, labels]) => {
+                                    const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
+                                    if (centerPct === null) return null
+                                    return (
+                                      <TooltipProvider key={date}>
+                                        <Tooltip>
+                                          <TooltipTrigger
+                                            className="absolute rounded-full z-10 cursor-default"
+                                            style={{
+                                              left: `calc(${centerPct}% - 5px)`,
+                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                              width: 10,
+                                              height: 10,
+                                              backgroundColor: "#ef4444",
+                                            }}
+                                          />
+                                          <TooltipContent>
+                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
