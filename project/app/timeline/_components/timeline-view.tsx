@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon } from "lucide-react"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
@@ -928,6 +929,37 @@ export function TimelineView({
                           </span>
                         </div>
                       )}
+
+                      {/* 日付メモの赤丸（同日はまとめて1つに） */}
+                      {Object.entries(
+                        p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                          if (!kd.date) return acc
+                          ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                          return acc
+                        }, {}),
+                      ).map(([date, labels]) => {
+                        const kdIdx = dayDiff(start, parseLocalDate(date))
+                        if (kdIdx < 0 || kdIdx >= totalDays) return null
+                        return (
+                          <TooltipProvider key={date}>
+                            <Tooltip>
+                              <TooltipTrigger
+                                className="absolute rounded-full z-10 cursor-default"
+                                style={{
+                                  left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                  top: ROW_HEIGHT / 2 - 5,
+                                  width: 10,
+                                  height: 10,
+                                  backgroundColor: "#ef4444",
+                                }}
+                              />
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )
+                      })}
                     </div>
                   )
                 })
