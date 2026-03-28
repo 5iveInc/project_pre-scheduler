@@ -72,6 +72,15 @@ function initSchema(db: Database.Database) {
   }
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS project_key_dates (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      date       TEXT NOT NULL,
+      label      TEXT NOT NULL DEFAULT ''
+    )
+  `)
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS custom_holidays (
       date TEXT PRIMARY KEY
     )
@@ -125,6 +134,8 @@ export function deleteUsers(ids: number[]): void {
 
 // ── Projects ──────────────────────────────────────────────
 
+export type KeyDate = { date: string; label: string }
+
 export type Project = {
   id: number
   name: string
@@ -136,6 +147,7 @@ export type Project = {
   end_date: string | null
   memo: string | null
   volume: number | null
+  key_dates: KeyDate[]
   created_at: string
 }
 
@@ -150,6 +162,7 @@ type RawProject = {
   end_date: string | null
   memo: string | null
   volume: number | null
+  key_dates_str: string | null
   created_at: string
 }
 
@@ -166,7 +179,9 @@ export function getProjects(): Project[] {
        FROM project_supports ps WHERE ps.project_id = p.id) AS support_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
        FROM project_supports ps JOIN users u ON u.id = ps.user_id
-       WHERE ps.project_id = p.id) AS support_names_str
+       WHERE ps.project_id = p.id) AS support_names_str,
+      (SELECT GROUP_CONCAT(kd.date || '|||' || kd.label, '~~~')
+       FROM project_key_dates kd WHERE kd.project_id = p.id) AS key_dates_str
     FROM projects p
     ORDER BY p.id ASC
   `).all() as RawProject[]
@@ -182,6 +197,12 @@ export function getProjects(): Project[] {
     end_date: row.end_date,
     memo: row.memo,
     volume: row.volume,
+    key_dates: row.key_dates_str
+      ? row.key_dates_str.split("~~~").map((s) => {
+          const sep = s.indexOf("|||")
+          return { date: s.slice(0, sep), label: s.slice(sep + 3) }
+        })
+      : [],
     created_at: row.created_at,
   }))
 }
@@ -196,6 +217,14 @@ function insertJunction(
   for (const userId of userIds) stmt.run(projectId, userId)
 }
 
+function replaceKeyDates(db: Database.Database, projectId: number | bigint, keyDates: KeyDate[]): void {
+  db.prepare("DELETE FROM project_key_dates WHERE project_id=?").run(projectId)
+  const stmt = db.prepare("INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)")
+  for (const kd of keyDates) {
+    if (kd.date) stmt.run(projectId, kd.date, kd.label)
+  }
+}
+
 export function addProject(
   name: string,
   assigneeIds: number[],
@@ -204,6 +233,7 @@ export function addProject(
   endDate: string | null,
   memo: string | null,
   volume: number | null,
+  keyDates: KeyDate[] = [],
 ): void {
   const db = getDb()
   const { lastInsertRowid } = db
@@ -211,6 +241,7 @@ export function addProject(
     .run(name, startDate, endDate, memo, volume)
   insertJunction(db, "project_assignees", lastInsertRowid, assigneeIds)
   insertJunction(db, "project_supports", lastInsertRowid, supportIds)
+  replaceKeyDates(db, lastInsertRowid, keyDates)
 }
 
 export function updateProject(
@@ -222,6 +253,7 @@ export function updateProject(
   endDate: string | null,
   memo: string | null,
   volume: number | null,
+  keyDates: KeyDate[] = [],
 ): void {
   const db = getDb()
   db.prepare("UPDATE projects SET name=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?")
@@ -230,6 +262,7 @@ export function updateProject(
   db.prepare("DELETE FROM project_supports WHERE project_id=?").run(id)
   insertJunction(db, "project_assignees", id, assigneeIds)
   insertJunction(db, "project_supports", id, supportIds)
+  replaceKeyDates(db, id, keyDates)
 }
 
 export function deleteProjects(ids: number[]): void {

@@ -155,6 +155,7 @@ function ProjectFormFields({
     endDate?: string | null
     memo?: string | null
     volume?: number | null
+    keyDates?: { date: string; label: string }[]
   }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
@@ -162,6 +163,9 @@ function ProjectFormFields({
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
   const [volume, setVolume] = useState<number | null>(defaultValues?.volume ?? 3)
+  const [keyDates, setKeyDates] = useState<{ date: string; label: string }[]>(
+    defaultValues?.keyDates ?? [],
+  )
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
@@ -235,6 +239,51 @@ function ProjectFormFields({
             onChange={(e) => setEndDate(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* 日付メモ（ボリュームの上） */}
+      <div className="space-y-1.5">
+        <Label>日付メモ</Label>
+        <input type="hidden" name="keyDatesJson" value={JSON.stringify(keyDates)} />
+        <div className="space-y-2">
+          {keyDates.map((kd, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                type="date"
+                value={kd.date}
+                onChange={(e) =>
+                  setKeyDates((prev) => prev.map((d, j) => (j === i ? { ...d, date: e.target.value } : d)))
+                }
+              />
+              <Input
+                type="text"
+                placeholder="ラベル"
+                value={kd.label}
+                onChange={(e) =>
+                  setKeyDates((prev) => prev.map((d, j) => (j === i ? { ...d, label: e.target.value } : d)))
+                }
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setKeyDates((prev) => prev.filter((_, j) => j !== i))}
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+              >
+                <Trash2Icon className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setKeyDates((prev) => [...prev, { date: "", label: "" }])}
+        >
+          <PlusIcon className="size-4" />
+          日付を追加
+        </Button>
       </div>
 
       <div className="space-y-1.5">
@@ -520,6 +569,11 @@ export function TimelineView({
     const endDate = (formData.get("endDate") as string) || null
     const memo = (formData.get("memo") as string) || null
     const volume = Number(formData.get("volume")) || null
+    let keyDates: { date: string; label: string }[] = []
+    try {
+      const raw = formData.get("keyDatesJson") as string | null
+      if (raw) keyDates = JSON.parse(raw)
+    } catch { /* ignore */ }
     startTransition(async () => {
       await updateProjectTimelineAction(
         editProject.id,
@@ -530,6 +584,7 @@ export function TimelineView({
         endDate,
         memo,
         volume,
+        keyDates,
       )
       setEditProject(null)
     })
@@ -1147,6 +1202,7 @@ export function TimelineView({
                   endDate: editProject.end_date,
                   memo: editProject.memo,
                   volume: editProject.volume,
+                  keyDates: editProject.key_dates,
                 }}
               />
               <DialogFooter>
