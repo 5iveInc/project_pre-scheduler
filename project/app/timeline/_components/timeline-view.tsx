@@ -89,6 +89,7 @@ function getDates(start: Date, end: Date): Date[] {
 }
 
 type MonthGroup = { label: string; days: number }
+type MonthViewMonth = { year: number; month: number; label: string; startDate: Date; endDate: Date }
 
 function getMonthGroups(dates: Date[]): MonthGroup[] {
   const groups: MonthGroup[] = []
@@ -107,6 +108,46 @@ function getMonthGroups(dates: Date[]): MonthGroup[] {
   }
   if (currentLabel) groups.push({ label: currentLabel, days: count })
   return groups
+}
+
+function keyDateToCenterPct(d: Date, months: MonthViewMonth[]): number | null {
+  const n = months.length
+  const firstMonth = months[0]
+  const monthOffset = (d.getFullYear() - firstMonth.year) * 12 + (d.getMonth() - firstMonth.month)
+  if (monthOffset < 0 || monthOffset >= n) return null
+  const daysInMonth = months[monthOffset].endDate.getDate()
+  return ((monthOffset + (d.getDate() - 0.5) / daysInMonth) / n) * 100
+}
+
+function calcMonthViewBar(
+  p: { start_date: string | null; end_date: string | null },
+  months: MonthViewMonth[],
+): { leftPct: number; widthPct: number } | null {
+  if (!p.start_date || !p.end_date) return null
+  const sd = parseLocalDate(p.start_date)
+  const ed = parseLocalDate(p.end_date)
+  const n = months.length
+  const firstMonth = months[0]
+  const lastMonth = months[n - 1]
+
+  if (ed < firstMonth.startDate || sd > lastMonth.endDate) return null
+
+  // 日付をコンテナ幅に対するパーセンテージに変換する
+  // isEnd=false: 日の開始位置（day-1）、isEnd=true: 日の終端位置（day）
+  function dateToPct(d: Date, isEnd: boolean): number {
+    const monthOffset = (d.getFullYear() - firstMonth.year) * 12 + (d.getMonth() - firstMonth.month)
+    if (monthOffset < 0) return 0
+    if (monthOffset >= n) return 100
+    const daysInMonth = months[monthOffset].endDate.getDate()
+    const dayOffset = isEnd ? d.getDate() : d.getDate() - 1
+    return ((monthOffset + dayOffset / daysInMonth) / n) * 100
+  }
+
+  const leftPct = dateToPct(sd, false)
+  const rightPct = dateToPct(ed, true)
+  if (rightPct <= leftPct) return null
+
+  return { leftPct, widthPct: rightPct - leftPct }
 }
 
 // ── チェックボックスグループ ────────────────────────────────
@@ -385,6 +426,13 @@ export function TimelineView({
   const scrollRef = useRef<HTMLDivElement>(null)
   const assignScrollRef = useRef<HTMLDivElement>(null)
 
+  // ── 表示モード（月 / 日）──
+  const [viewMode, setViewMode] = useState<"month" | "day">("day")
+
+  function handleViewMode(mode: "month" | "day") {
+    setViewMode(mode)
+  }
+
   // ── 日幅（ドラッグで可変）──
   const [dayWidth, setDayWidth] = useState(DEFAULT_DAY_WIDTH)
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
@@ -630,6 +678,22 @@ export function TimelineView({
     .join(", ")
   const rowBg = restBands ? `${gridLine}, ${restBands}` : gridLine
 
+  const monthViewMonths = useMemo<MonthViewMonth[]>(() => {
+    const today = new Date()
+    const baseYear = today.getFullYear()
+    const baseMonth = today.getMonth() - 1
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(baseYear, baseMonth + i, 1)
+      return {
+        year: d.getFullYear(),
+        month: d.getMonth(),
+        label: `${d.getFullYear()}年${d.getMonth() + 1}月`,
+        startDate: d,
+        endDate: new Date(d.getFullYear(), d.getMonth() + 1, 0),
+      }
+    })
+  }, [])
+
   const TABS = [
     { id: "project", label: "案件" },
     { id: "assign", label: "担当" },
@@ -662,6 +726,31 @@ export function TimelineView({
       <>
       {/* ── ツールバー ── */}
       <div className="flex justify-end gap-2 mb-2">
+        {/* 月/日 切り替えボタングループ */}
+        <div className="inline-flex mr-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleViewMode("month")}
+            className={[
+              "rounded-r-none border-r-0",
+              viewMode === "month" ? "bg-muted text-foreground" : "",
+            ].join(" ")}
+          >
+            月
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleViewMode("day")}
+            className={[
+              "rounded-l-none",
+              viewMode === "day" ? "bg-muted text-foreground" : "",
+            ].join(" ")}
+          >
+            日
+          </Button>
+        </div>
         {/* ソートボタン */}
         <div ref={sortMenuRef} className="relative">
           <Button
@@ -782,174 +871,85 @@ export function TimelineView({
         </Button>
       </div>
 
-      <div className="rounded-lg border overflow-hidden bg-background">
-        <div className="flex">
-          {/* ── 左固定列 ── */}
-          <div
-            style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-            className="shrink-0 border-r bg-background z-10"
-          >
-            {/* 月ヘッダー行の高さ合わせ */}
+      {viewMode === "month" ? (
+        /* ── 月ビュー（案件タブ） ── */
+        <div className="rounded-lg border overflow-hidden bg-background">
+          <div className="flex">
             <div
-              style={{ height: MONTH_HEADER_HEIGHT }}
-              className="border-b bg-muted/40"
-            />
-            {/* 日ヘッダー行の高さ合わせ */}
-            <div
-              style={{ height: DAY_HEADER_HEIGHT }}
-              className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
+              style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+              className="shrink-0 border-r bg-background z-10"
             >
-              案件名
-            </div>
-            {/* 案件行 */}
-            {projects.length === 0 ? (
               <div
-                style={{ height: ROW_HEIGHT }}
-                className="flex items-center px-3 text-sm text-muted-foreground"
+                style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}
+                className="border-b bg-muted/40 flex items-end px-3 pb-2 text-xs font-semibold text-muted-foreground"
               >
-                案件なし
+                案件名
               </div>
-            ) : (
-              visibleProjects.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  style={{ height: ROW_HEIGHT }}
-                  className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => setEditProject(p)}
-                  title={`${p.name}（クリックで編集）`}
-                >
-                  {p.volume !== null && (
-                    <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
-                      Lv.{p.volume}
-                    </span>
-                  )}
-                  <span className="text-sm font-medium truncate">{p.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* ── 右スクロール領域 ── */}
-          <div ref={scrollRef} className="overflow-x-auto flex-1">
-            <div style={{ width: totalWidth, minWidth: totalWidth }}>
-
-              {/* 月ヘッダー */}
-              <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
-                {monthGroups.map((mg, i) => (
-                  <div
-                    key={i}
-                    style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
-                    className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+              {visibleProjects.length === 0 ? (
+                <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                  案件なし
+                </div>
+              ) : (
+                visibleProjects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    style={{ height: ROW_HEIGHT }}
+                    className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setEditProject(p)}
+                    title={`${p.name}（クリックで編集）`}
                   >
-                    {mg.label}
+                    {p.volume !== null && (
+                      <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
+                        Lv.{p.volume}
+                      </span>
+                    )}
+                    <span className="text-sm font-medium truncate">{p.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                {monthViewMonths.map((m) => (
+                  <div
+                    key={m.label}
+                    className="flex-1 min-w-0 border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                  >
+                    {m.label}
                   </div>
                 ))}
               </div>
-
-              {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
-              <div
-                className="flex border-b select-none cursor-ew-resize"
-                style={{ height: DAY_HEADER_HEIGHT }}
-                onMouseDown={handleDayHeaderMouseDown}
-              >
-                {dates.map((d, i) => {
-                  const isToday = i === todayIndex
-                  const isHighlighted = highlightedDateIndices.has(i)
-                  return (
-                    <div
-                      key={i}
-                      style={{ width: dayWidth, minWidth: dayWidth }}
-                      className={[
-                        "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
-                        isToday
-                          ? "bg-green-500 text-white"
-                          : isHighlighted
-                          ? "bg-yellow-300 text-foreground"
-                          : isRestDay(d)
-                          ? "bg-gray-300 text-muted-foreground"
-                          : "text-muted-foreground",
-                      ].join(" ")}
-                    >
-                      <span>{d.getDate()}</span>
-                      {dayWidth >= 24 && (
-                        <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              {/* 案件行 */}
-              {projects.length === 0 ? (
-                <div
-                  style={{ height: ROW_HEIGHT }}
-                  className="flex items-center justify-center text-sm text-muted-foreground"
-                >
+              {visibleProjects.length === 0 ? (
+                <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                   案件がありません。「案件一覧」から登録してください。
                 </div>
               ) : (
                 visibleProjects.map((p) => {
-                  let barLeft: number | null = null
-                  let barWidth: number | null = null
-
-                  if (p.start_date && p.end_date) {
-                    const sd = parseLocalDate(p.start_date)
-                    const ed = parseLocalDate(p.end_date)
-                    const startIdx = dayDiff(start, sd)
-                    const endIdx = dayDiff(start, ed)
-                    const clampedStart = Math.max(0, startIdx)
-                    const clampedEnd = Math.min(totalDays - 1, endIdx)
-                    if (clampedStart <= clampedEnd) {
-                      barLeft = clampedStart * dayWidth + 3
-                      barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
-                    }
-                  }
-
+                  const barInfo = calcMonthViewBar(p, monthViewMonths)
                   const barColor = barColorFromVolume(p.volume)
-
+                  const keyDateEntries = Object.entries(
+                    p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                      if (!kd.date) return acc
+                      ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                      return acc
+                    }, {}),
+                  )
                   return (
                     <div
                       key={p.id}
-                      style={{
-                        height: ROW_HEIGHT,
-                        width: totalWidth,
-                        position: "relative",
-                        backgroundImage: rowBg,
-                      }}
-                      className="border-b last:border-b-0"
+                      style={{ height: ROW_HEIGHT }}
+                      className="relative flex border-b last:border-b-0"
                     >
-                      {/* 今日のカラムハイライト */}
-                      {showTodayLine && (
-                        <div
-                          className="absolute top-0 bottom-0 pointer-events-none"
-                          style={{
-                            left: todayIndex * dayWidth,
-                            width: dayWidth,
-                            backgroundColor: "rgba(74,222,128,0.3)",
-                          }}
-                        />
-                      )}
-                      {/* クリックハイライト列 */}
-                      {Array.from(highlightedDateIndices).map((idx) => (
-                        <div
-                          key={idx}
-                          className="absolute top-0 bottom-0 pointer-events-none"
-                          style={{
-                            left: idx * dayWidth,
-                            width: dayWidth,
-                            backgroundColor: "rgba(234,179,8,0.2)",
-                          }}
-                        />
+                      {monthViewMonths.map((m) => (
+                        <div key={m.label} className="flex-1 min-w-0 border-r last:border-r-0" />
                       ))}
-
-                      {/* バー */}
-                      {barLeft !== null && barWidth !== null && (
+                      {barInfo && (
                         <div
                           className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
                           style={{
-                            left: barLeft,
-                            width: barWidth,
+                            left: `${barInfo.leftPct}%`,
+                            width: `${barInfo.widthPct}%`,
                             top: 10,
                             bottom: 10,
                             backgroundColor: barColor,
@@ -962,24 +962,16 @@ export function TimelineView({
                           </span>
                         </div>
                       )}
-
-                      {/* 日付メモの赤丸（同日はまとめて1つに） */}
-                      {Object.entries(
-                        p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                          if (!kd.date) return acc
-                          ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                          return acc
-                        }, {}),
-                      ).map(([date, labels]) => {
-                        const kdIdx = dayDiff(start, parseLocalDate(date))
-                        if (kdIdx < 0 || kdIdx >= totalDays) return null
+                      {keyDateEntries.map(([date, labels]) => {
+                        const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
+                        if (centerPct === null) return null
                         return (
                           <TooltipProvider key={date}>
                             <Tooltip>
                               <TooltipTrigger
                                 className="absolute rounded-full z-10 cursor-default"
                                 style={{
-                                  left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                  left: `calc(${centerPct}% - 5px)`,
                                   top: ROW_HEIGHT / 2 - 5,
                                   width: 10,
                                   height: 10,
@@ -1000,7 +992,228 @@ export function TimelineView({
             </div>
           </div>
         </div>
-      </div>
+      ) : (
+        /* ── 日ビュー（案件タブ） ── */
+        <div className="rounded-lg border overflow-hidden bg-background">
+          <div className="flex">
+            {/* ── 左固定列 ── */}
+            <div
+              style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+              className="shrink-0 border-r bg-background z-10"
+            >
+              {/* 月ヘッダー行の高さ合わせ */}
+              <div
+                style={{ height: MONTH_HEADER_HEIGHT }}
+                className="border-b bg-muted/40"
+              />
+              {/* 日ヘッダー行の高さ合わせ */}
+              <div
+                style={{ height: DAY_HEADER_HEIGHT }}
+                className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
+              >
+                案件名
+              </div>
+              {/* 案件行 */}
+              {projects.length === 0 ? (
+                <div
+                  style={{ height: ROW_HEIGHT }}
+                  className="flex items-center px-3 text-sm text-muted-foreground"
+                >
+                  案件なし
+                </div>
+              ) : (
+                visibleProjects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    style={{ height: ROW_HEIGHT }}
+                    className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => setEditProject(p)}
+                    title={`${p.name}（クリックで編集）`}
+                  >
+                    {p.volume !== null && (
+                      <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
+                        Lv.{p.volume}
+                      </span>
+                    )}
+                    <span className="text-sm font-medium truncate">{p.name}</span>
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* ── 右スクロール領域 ── */}
+            <div ref={scrollRef} className="overflow-x-auto flex-1">
+              <div style={{ width: totalWidth, minWidth: totalWidth }}>
+
+                {/* 月ヘッダー */}
+                <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
+                  {monthGroups.map((mg, i) => (
+                    <div
+                      key={i}
+                      style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
+                      className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                    >
+                      {mg.label}
+                    </div>
+                  ))}
+                </div>
+
+                {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
+                <div
+                  className="flex border-b select-none cursor-ew-resize"
+                  style={{ height: DAY_HEADER_HEIGHT }}
+                  onMouseDown={handleDayHeaderMouseDown}
+                >
+                  {dates.map((d, i) => {
+                    const isToday = i === todayIndex
+                    const isHighlighted = highlightedDateIndices.has(i)
+                    return (
+                      <div
+                        key={i}
+                        style={{ width: dayWidth, minWidth: dayWidth }}
+                        className={[
+                          "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
+                          isToday
+                            ? "bg-green-500 text-white"
+                            : isHighlighted
+                            ? "bg-yellow-300 text-foreground"
+                            : isRestDay(d)
+                            ? "bg-gray-300 text-muted-foreground"
+                            : "text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        <span>{d.getDate()}</span>
+                        {dayWidth >= 24 && (
+                          <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* 案件行 */}
+                {projects.length === 0 ? (
+                  <div
+                    style={{ height: ROW_HEIGHT }}
+                    className="flex items-center justify-center text-sm text-muted-foreground"
+                  >
+                    案件がありません。「案件一覧」から登録してください。
+                  </div>
+                ) : (
+                  visibleProjects.map((p) => {
+                    let barLeft: number | null = null
+                    let barWidth: number | null = null
+
+                    if (p.start_date && p.end_date) {
+                      const sd = parseLocalDate(p.start_date)
+                      const ed = parseLocalDate(p.end_date)
+                      const startIdx = dayDiff(start, sd)
+                      const endIdx = dayDiff(start, ed)
+                      const clampedStart = Math.max(0, startIdx)
+                      const clampedEnd = Math.min(totalDays - 1, endIdx)
+                      if (clampedStart <= clampedEnd) {
+                        barLeft = clampedStart * dayWidth + 3
+                        barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                      }
+                    }
+
+                    const barColor = barColorFromVolume(p.volume)
+
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          height: ROW_HEIGHT,
+                          width: totalWidth,
+                          position: "relative",
+                          backgroundImage: rowBg,
+                        }}
+                        className="border-b last:border-b-0"
+                      >
+                        {/* 今日のカラムハイライト */}
+                        {showTodayLine && (
+                          <div
+                            className="absolute top-0 bottom-0 pointer-events-none"
+                            style={{
+                              left: todayIndex * dayWidth,
+                              width: dayWidth,
+                              backgroundColor: "rgba(74,222,128,0.3)",
+                            }}
+                          />
+                        )}
+                        {/* クリックハイライト列 */}
+                        {Array.from(highlightedDateIndices).map((idx) => (
+                          <div
+                            key={idx}
+                            className="absolute top-0 bottom-0 pointer-events-none"
+                            style={{
+                              left: idx * dayWidth,
+                              width: dayWidth,
+                              backgroundColor: "rgba(234,179,8,0.2)",
+                            }}
+                          />
+                        ))}
+
+                        {/* バー */}
+                        {barLeft !== null && barWidth !== null && (
+                          <div
+                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            style={{
+                              left: barLeft,
+                              width: barWidth,
+                              top: 10,
+                              bottom: 10,
+                              backgroundColor: barColor,
+                            }}
+                            onClick={() => setEditProject(p)}
+                            title={`${p.name}（クリックで編集）`}
+                          >
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                              {p.name}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* 日付メモの赤丸（同日はまとめて1つに） */}
+                        {Object.entries(
+                          p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                            if (!kd.date) return acc
+                            ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                            return acc
+                          }, {}),
+                        ).map(([date, labels]) => {
+                          const kdIdx = dayDiff(start, parseLocalDate(date))
+                          if (kdIdx < 0 || kdIdx >= totalDays) return null
+                          return (
+                            <TooltipProvider key={date}>
+                              <Tooltip>
+                                <TooltipTrigger
+                                  className="absolute rounded-full z-10 cursor-default"
+                                  style={{
+                                    left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                    top: ROW_HEIGHT / 2 - 5,
+                                    width: 10,
+                                    height: 10,
+                                    backgroundColor: "#ef4444",
+                                  }}
+                                />
+                                <TooltipContent>
+                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setAddOpen(true)}
@@ -1029,6 +1242,31 @@ export function TimelineView({
           <>
             {/* ツールバー（絞り込み・設定） */}
             <div className="flex justify-end gap-2 mb-2">
+              {/* 月/日 切り替えボタングループ */}
+              <div className="inline-flex mr-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewMode("month")}
+                  className={[
+                    "rounded-r-none border-r-0",
+                    viewMode === "month" ? "bg-muted text-foreground" : "",
+                  ].join(" ")}
+                >
+                  月
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleViewMode("day")}
+                  className={[
+                    "rounded-l-none",
+                    viewMode === "day" ? "bg-muted text-foreground" : "",
+                  ].join(" ")}
+                >
+                  日
+                </Button>
+              </div>
               {/* 絞り込みボタン（担当タブ） */}
               <div ref={assignFilterRef} className="relative">
                 <Button
@@ -1093,145 +1331,80 @@ export function TimelineView({
               </Button>
             </div>
 
-            <div className="rounded-lg border overflow-hidden bg-background">
-              <div className="flex">
-                {/* 左固定列 */}
-                <div
-                  style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-                  className="shrink-0 border-r bg-background z-10"
-                >
-                  <div style={{ height: MONTH_HEADER_HEIGHT }} className="border-b bg-muted/40" />
+            {viewMode === "month" ? (
+              /* ── 月ビュー（担当タブ） ── */
+              <div className="rounded-lg border overflow-hidden bg-background">
+                <div className="flex">
                   <div
-                    style={{ height: DAY_HEADER_HEIGHT }}
-                    className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
+                    style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+                    className="shrink-0 border-r bg-background z-10"
                   >
-                    担当者
-                  </div>
-                  {userLaneData.length === 0 ? (
-                    <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
-                      担当者なし
+                    <div
+                      style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}
+                      className="border-b bg-muted/40 flex items-end px-3 pb-2 text-xs font-semibold text-muted-foreground"
+                    >
+                      担当者
                     </div>
-                  ) : (
-                    userLaneData.map(({ user: u, rowHeight }) => (
-                      <div
-                        key={u.id}
-                        style={{ height: rowHeight }}
-                        className="w-full border-b last:border-b-0 flex items-center px-3"
-                      >
-                        <span className="text-sm font-medium truncate">{u.name}</span>
+                    {userLaneData.length === 0 ? (
+                      <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                        担当者なし
                       </div>
-                    ))
-                  )}
-                </div>
-
-                {/* 右スクロール領域 */}
-                <div ref={assignScrollRef} className="overflow-x-auto flex-1">
-                  <div style={{ width: totalWidth, minWidth: totalWidth }}>
-
-                    {/* 月ヘッダー */}
-                    <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
-                      {monthGroups.map((mg, i) => (
+                    ) : (
+                      userLaneData.map(({ user: u, rowHeight }) => (
                         <div
-                          key={i}
-                          style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
-                          className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                          key={u.id}
+                          style={{ height: rowHeight }}
+                          className="w-full border-b last:border-b-0 flex items-center px-3"
                         >
-                          {mg.label}
+                          <span className="text-sm font-medium truncate">{u.name}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                      {monthViewMonths.map((m) => (
+                        <div
+                          key={m.label}
+                          className="flex-1 min-w-0 border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                        >
+                          {m.label}
                         </div>
                       ))}
                     </div>
-
-                    {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
-                    <div
-                      className="flex border-b select-none cursor-ew-resize"
-                      style={{ height: DAY_HEADER_HEIGHT }}
-                      onMouseDown={handleDayHeaderMouseDown}
-                    >
-                      {dates.map((d, i) => {
-                        const isToday = i === todayIndex
-                        const isHighlighted = highlightedDateIndices.has(i)
-                        return (
-                          <div
-                            key={i}
-                            style={{ width: dayWidth, minWidth: dayWidth }}
-                            className={[
-                              "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
-                              isToday
-                                ? "bg-green-500 text-white"
-                                : isHighlighted
-                                ? "bg-yellow-300 text-foreground"
-                                : isRestDay(d)
-                                ? "bg-gray-300 text-muted-foreground"
-                                : "text-muted-foreground",
-                            ].join(" ")}
-                          >
-                            <span>{d.getDate()}</span>
-                            {dayWidth >= 24 && (
-                              <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-
-                    {/* 担当者行 */}
                     {userLaneData.length === 0 ? (
-                      <div
-                        style={{ height: ROW_HEIGHT }}
-                        className="flex items-center justify-center text-sm text-muted-foreground"
-                      >
+                      <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                         担当者が割り当てられた案件がありません。
                       </div>
                     ) : (
                       userLaneData.map(({ user: u, assignments, rowHeight }) => (
                         <div
                           key={u.id}
-                          style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                          className="border-b last:border-b-0"
+                          style={{ height: rowHeight }}
+                          className="relative flex border-b last:border-b-0"
                         >
-                          {/* 今日のカラムハイライト */}
-                          {showTodayLine && (
-                            <div
-                              className="absolute top-0 bottom-0 pointer-events-none"
-                              style={{
-                                left: todayIndex * dayWidth,
-                                width: dayWidth,
-                                backgroundColor: "rgba(74,222,128,0.3)",
-                              }}
-                            />
-                          )}
-                          {/* クリックハイライト列 */}
-                          {Array.from(highlightedDateIndices).map((idx) => (
-                            <div
-                              key={idx}
-                              className="absolute top-0 bottom-0 pointer-events-none"
-                              style={{
-                                left: idx * dayWidth,
-                                width: dayWidth,
-                                backgroundColor: "rgba(234,179,8,0.2)",
-                              }}
-                            />
+                          {monthViewMonths.map((m) => (
+                            <div key={m.label} className="flex-1 min-w-0 border-r last:border-r-0" />
                           ))}
-                          {/* 案件バー（レーンごとに縦位置を計算） */}
                           {assignments.map(({ project: p, lane }) => {
-                            const sd = parseLocalDate(p.start_date!)
-                            const ed = parseLocalDate(p.end_date!)
-                            const startIdx = dayDiff(start, sd)
-                            const endIdx = dayDiff(start, ed)
-                            const clampedStart = Math.max(0, startIdx)
-                            const clampedEnd = Math.min(totalDays - 1, endIdx)
-                            if (clampedStart > clampedEnd) return null
-                            const barLeft = clampedStart * dayWidth + 3
-                            const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                            const barInfo = calcMonthViewBar(p, monthViewMonths)
+                            if (!barInfo) return null
                             const barTop = lane * ROW_HEIGHT + 10
                             const barHeight = ROW_HEIGHT - 20
+                            const keyDateEntries = Object.entries(
+                              p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                                if (!kd.date) return acc
+                                ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                                return acc
+                              }, {}),
+                            )
                             return (
                               <div key={p.id}>
                                 <div
                                   className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
                                   style={{
-                                    left: barLeft,
-                                    width: barWidth,
+                                    left: `${barInfo.leftPct}%`,
+                                    width: `${barInfo.widthPct}%`,
                                     top: barTop,
                                     height: barHeight,
                                     backgroundColor: barColorFromVolume(p.volume),
@@ -1243,23 +1416,16 @@ export function TimelineView({
                                     {p.name}
                                   </span>
                                 </div>
-                                {/* 日付メモの赤丸 */}
-                                {Object.entries(
-                                  p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                                    if (!kd.date) return acc
-                                    ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                                    return acc
-                                  }, {}),
-                                ).map(([date, labels]) => {
-                                  const kdIdx = dayDiff(start, parseLocalDate(date))
-                                  if (kdIdx < 0 || kdIdx >= totalDays) return null
+                                {keyDateEntries.map(([date, labels]) => {
+                                  const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
+                                  if (centerPct === null) return null
                                   return (
                                     <TooltipProvider key={date}>
                                       <Tooltip>
                                         <TooltipTrigger
                                           className="absolute rounded-full z-10 cursor-default"
                                           style={{
-                                            left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                            left: `calc(${centerPct}% - 5px)`,
                                             top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
                                             width: 10,
                                             height: 10,
@@ -1282,7 +1448,199 @@ export function TimelineView({
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              /* ── 日ビュー（担当タブ） ── */
+              <div className="rounded-lg border overflow-hidden bg-background">
+                <div className="flex">
+                  {/* 左固定列 */}
+                  <div
+                    style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+                    className="shrink-0 border-r bg-background z-10"
+                  >
+                    <div style={{ height: MONTH_HEADER_HEIGHT }} className="border-b bg-muted/40" />
+                    <div
+                      style={{ height: DAY_HEADER_HEIGHT }}
+                      className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
+                    >
+                      担当者
+                    </div>
+                    {userLaneData.length === 0 ? (
+                      <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                        担当者なし
+                      </div>
+                    ) : (
+                      userLaneData.map(({ user: u, rowHeight }) => (
+                        <div
+                          key={u.id}
+                          style={{ height: rowHeight }}
+                          className="w-full border-b last:border-b-0 flex items-center px-3"
+                        >
+                          <span className="text-sm font-medium truncate">{u.name}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* 右スクロール領域 */}
+                  <div ref={assignScrollRef} className="overflow-x-auto flex-1">
+                    <div style={{ width: totalWidth, minWidth: totalWidth }}>
+
+                      {/* 月ヘッダー */}
+                      <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
+                        {monthGroups.map((mg, i) => (
+                          <div
+                            key={i}
+                            style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
+                            className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                          >
+                            {mg.label}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
+                      <div
+                        className="flex border-b select-none cursor-ew-resize"
+                        style={{ height: DAY_HEADER_HEIGHT }}
+                        onMouseDown={handleDayHeaderMouseDown}
+                      >
+                        {dates.map((d, i) => {
+                          const isToday = i === todayIndex
+                          const isHighlighted = highlightedDateIndices.has(i)
+                          return (
+                            <div
+                              key={i}
+                              style={{ width: dayWidth, minWidth: dayWidth }}
+                              className={[
+                                "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
+                                isToday
+                                  ? "bg-green-500 text-white"
+                                  : isHighlighted
+                                  ? "bg-yellow-300 text-foreground"
+                                  : isRestDay(d)
+                                  ? "bg-gray-300 text-muted-foreground"
+                                  : "text-muted-foreground",
+                              ].join(" ")}
+                            >
+                              <span>{d.getDate()}</span>
+                              {dayWidth >= 24 && (
+                                <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {/* 担当者行 */}
+                      {userLaneData.length === 0 ? (
+                        <div
+                          style={{ height: ROW_HEIGHT }}
+                          className="flex items-center justify-center text-sm text-muted-foreground"
+                        >
+                          担当者が割り当てられた案件がありません。
+                        </div>
+                      ) : (
+                        userLaneData.map(({ user: u, assignments, rowHeight }) => (
+                          <div
+                            key={u.id}
+                            style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                            className="border-b last:border-b-0"
+                          >
+                            {/* 今日のカラムハイライト */}
+                            {showTodayLine && (
+                              <div
+                                className="absolute top-0 bottom-0 pointer-events-none"
+                                style={{
+                                  left: todayIndex * dayWidth,
+                                  width: dayWidth,
+                                  backgroundColor: "rgba(74,222,128,0.3)",
+                                }}
+                              />
+                            )}
+                            {/* クリックハイライト列 */}
+                            {Array.from(highlightedDateIndices).map((idx) => (
+                              <div
+                                key={idx}
+                                className="absolute top-0 bottom-0 pointer-events-none"
+                                style={{
+                                  left: idx * dayWidth,
+                                  width: dayWidth,
+                                  backgroundColor: "rgba(234,179,8,0.2)",
+                                }}
+                              />
+                            ))}
+                            {/* 案件バー（レーンごとに縦位置を計算） */}
+                            {assignments.map(({ project: p, lane }) => {
+                              const sd = parseLocalDate(p.start_date!)
+                              const ed = parseLocalDate(p.end_date!)
+                              const startIdx = dayDiff(start, sd)
+                              const endIdx = dayDiff(start, ed)
+                              const clampedStart = Math.max(0, startIdx)
+                              const clampedEnd = Math.min(totalDays - 1, endIdx)
+                              if (clampedStart > clampedEnd) return null
+                              const barLeft = clampedStart * dayWidth + 3
+                              const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                              const barTop = lane * ROW_HEIGHT + 10
+                              const barHeight = ROW_HEIGHT - 20
+                              return (
+                                <div key={p.id}>
+                                  <div
+                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    style={{
+                                      left: barLeft,
+                                      width: barWidth,
+                                      top: barTop,
+                                      height: barHeight,
+                                      backgroundColor: barColorFromVolume(p.volume),
+                                    }}
+                                    onClick={() => setEditProject(p)}
+                                    title={`${p.name}（クリックで編集）`}
+                                  >
+                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                      {p.name}
+                                    </span>
+                                  </div>
+                                  {/* 日付メモの赤丸 */}
+                                  {Object.entries(
+                                    p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                                      if (!kd.date) return acc
+                                      ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                                      return acc
+                                    }, {}),
+                                  ).map(([date, labels]) => {
+                                    const kdIdx = dayDiff(start, parseLocalDate(date))
+                                    if (kdIdx < 0 || kdIdx >= totalDays) return null
+                                    return (
+                                      <TooltipProvider key={date}>
+                                        <Tooltip>
+                                          <TooltipTrigger
+                                            className="absolute rounded-full z-10 cursor-default"
+                                            style={{
+                                              left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                              width: 10,
+                                              height: 10,
+                                              backgroundColor: "#ef4444",
+                                            }}
+                                          />
+                                          <TooltipContent>
+                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )
+                                  })}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => setAddOpen(true)}
