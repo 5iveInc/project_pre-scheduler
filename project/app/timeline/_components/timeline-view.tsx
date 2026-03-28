@@ -404,16 +404,32 @@ export function TimelineView({
 
   function handleDayHeaderMouseDown(e: React.MouseEvent) {
     e.preventDefault()
-    dragRef.current = { startX: e.clientX, startWidth: dayWidth }
+    const startX = e.clientX
+    dragRef.current = { startX, startWidth: dayWidth }
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const clickedDayIdx = Math.floor((e.clientX - rect.left) / dayWidth)
+    let didDrag = false
 
     function onMouseMove(ev: MouseEvent) {
       if (!dragRef.current) return
       const delta = ev.clientX - dragRef.current.startX
-      const next = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, dragRef.current.startWidth + delta * 0.3))
-      setDayWidth(next)
+      if (Math.abs(delta) >= 3) {
+        didDrag = true
+        const next = Math.min(MAX_DAY_WIDTH, Math.max(MIN_DAY_WIDTH, dragRef.current.startWidth + delta * 0.3))
+        setDayWidth(next)
+      }
     }
 
     function onMouseUp() {
+      if (!didDrag && clickedDayIdx >= 0 && clickedDayIdx < totalDays) {
+        setHighlightedDateIndices((prev) => {
+          const next = new Set(prev)
+          if (next.has(clickedDayIdx)) next.delete(clickedDayIdx)
+          else next.add(clickedDayIdx)
+          return next
+        })
+      }
       dragRef.current = null
       document.removeEventListener("mousemove", onMouseMove)
       document.removeEventListener("mouseup", onMouseUp)
@@ -422,6 +438,8 @@ export function TimelineView({
     document.addEventListener("mousemove", onMouseMove)
     document.addEventListener("mouseup", onMouseUp)
   }
+
+  const [highlightedDateIndices, setHighlightedDateIndices] = useState<Set<number>>(new Set())
 
   const [activeTab, setActiveTab] = useState("project")
 
@@ -837,6 +855,7 @@ export function TimelineView({
               >
                 {dates.map((d, i) => {
                   const isToday = i === todayIndex
+                  const isHighlighted = highlightedDateIndices.has(i)
                   return (
                     <div
                       key={i}
@@ -845,6 +864,8 @@ export function TimelineView({
                         "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
                         isToday
                           ? "bg-green-500 text-white"
+                          : isHighlighted
+                          ? "bg-yellow-300 text-foreground"
                           : isRestDay(d)
                           ? "bg-gray-300 text-muted-foreground"
                           : "text-muted-foreground",
@@ -909,6 +930,18 @@ export function TimelineView({
                           }}
                         />
                       )}
+                      {/* クリックハイライト列 */}
+                      {Array.from(highlightedDateIndices).map((idx) => (
+                        <div
+                          key={idx}
+                          className="absolute top-0 bottom-0 pointer-events-none"
+                          style={{
+                            left: idx * dayWidth,
+                            width: dayWidth,
+                            backgroundColor: "rgba(234,179,8,0.2)",
+                          }}
+                        />
+                      ))}
 
                       {/* バー */}
                       {barLeft !== null && barWidth !== null && (
@@ -1116,6 +1149,7 @@ export function TimelineView({
                     >
                       {dates.map((d, i) => {
                         const isToday = i === todayIndex
+                        const isHighlighted = highlightedDateIndices.has(i)
                         return (
                           <div
                             key={i}
@@ -1124,6 +1158,8 @@ export function TimelineView({
                               "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
                               isToday
                                 ? "bg-green-500 text-white"
+                                : isHighlighted
+                                ? "bg-yellow-300 text-foreground"
                                 : isRestDay(d)
                                 ? "bg-gray-300 text-muted-foreground"
                                 : "text-muted-foreground",
@@ -1164,6 +1200,18 @@ export function TimelineView({
                               }}
                             />
                           )}
+                          {/* クリックハイライト列 */}
+                          {Array.from(highlightedDateIndices).map((idx) => (
+                            <div
+                              key={idx}
+                              className="absolute top-0 bottom-0 pointer-events-none"
+                              style={{
+                                left: idx * dayWidth,
+                                width: dayWidth,
+                                backgroundColor: "rgba(234,179,8,0.2)",
+                              }}
+                            />
+                          ))}
                           {/* 案件バー（レーンごとに縦位置を計算） */}
                           {assignments.map(({ project: p, lane }) => {
                             const sd = parseLocalDate(p.start_date!)
@@ -1178,22 +1226,53 @@ export function TimelineView({
                             const barTop = lane * ROW_HEIGHT + 10
                             const barHeight = ROW_HEIGHT - 20
                             return (
-                              <div
-                                key={p.id}
-                                className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                style={{
-                                  left: barLeft,
-                                  width: barWidth,
-                                  top: barTop,
-                                  height: barHeight,
-                                  backgroundColor: barColorFromVolume(p.volume),
-                                }}
-                                onClick={() => setEditProject(p)}
-                                title={`${p.name}（クリックで編集）`}
-                              >
-                                <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                  {p.name}
-                                </span>
+                              <div key={p.id}>
+                                <div
+                                  className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                  style={{
+                                    left: barLeft,
+                                    width: barWidth,
+                                    top: barTop,
+                                    height: barHeight,
+                                    backgroundColor: barColorFromVolume(p.volume),
+                                  }}
+                                  onClick={() => setEditProject(p)}
+                                  title={`${p.name}（クリックで編集）`}
+                                >
+                                  <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                    {p.name}
+                                  </span>
+                                </div>
+                                {/* 日付メモの赤丸 */}
+                                {Object.entries(
+                                  p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                                    if (!kd.date) return acc
+                                    ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                                    return acc
+                                  }, {}),
+                                ).map(([date, labels]) => {
+                                  const kdIdx = dayDiff(start, parseLocalDate(date))
+                                  if (kdIdx < 0 || kdIdx >= totalDays) return null
+                                  return (
+                                    <TooltipProvider key={date}>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          className="absolute rounded-full z-10 cursor-default"
+                                          style={{
+                                            left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: "#ef4444",
+                                          }}
+                                        />
+                                        <TooltipContent>
+                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                })}
                               </div>
                             )
                           })}
