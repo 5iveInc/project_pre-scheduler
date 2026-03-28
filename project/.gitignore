@@ -40,6 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# SQLite WAL mode auxiliary files
+# SQLite
+database/data.db
 database/data.db-shm
 database/data.db-wal
