@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, updateProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
+import { archiveProjectsAction, unarchiveProjectsAction } from "@/app/project/actions"
 import {
   Dialog,
   DialogContent,
@@ -14,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon } from "lucide-react"
+import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon, ArchiveIcon, ArchiveRestoreIcon } from "lucide-react"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
 
@@ -647,6 +648,18 @@ export function TimelineView({
 
   function removeCustomDate(index: number) {
     setCustomDates((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  function handleArchiveToggle() {
+    if (!editProject) return
+    startTransition(async () => {
+      if (editProject.archived) {
+        await unarchiveProjectsAction([editProject.id])
+      } else {
+        await archiveProjectsAction([editProject.id])
+      }
+      setEditProject(null)
+    })
   }
 
   function handleSave(formData: FormData) {
@@ -1704,6 +1717,18 @@ export function TimelineView({
                 }}
               />
               <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleArchiveToggle}
+                  disabled={isPending}
+                >
+                  {editProject.archived ? (
+                    <><ArchiveRestoreIcon className="mr-1" />作業中へ戻す</>
+                  ) : (
+                    <><ArchiveIcon className="mr-1" />アーカイブ</>
+                  )}
+                </Button>
                 <Button type="submit" disabled={isPending}>
                   保存する
                 </Button>

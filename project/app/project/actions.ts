@@ -1,7 +1,18 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addProject, updateProject, deleteProjects, archiveProjects, unarchiveProjects } from "@/database/db"
+import { addProject, updateProject, deleteProjects, archiveProjects, unarchiveProjects, type KeyDate } from "@/database/db"
+
+function parseKeyDates(json: string | null): KeyDate[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((kd) => kd && typeof kd.date === "string" && typeof kd.label === "string")
+  } catch {
+    return []
+  }
+}
 
 export async function addProjectAction(formData: FormData) {
   const name = (formData.get("name") as string).trim()
@@ -11,11 +22,13 @@ export async function addProjectAction(formData: FormData) {
   const endDate = (formData.get("endDate") as string) || null
   const memo = (formData.get("memo") as string) || null
   const volume = Number(formData.get("volume")) || null
+  const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
 
   if (!name) throw new Error("案件名は必須です")
 
-  addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume)
+  addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
   revalidatePath("/project")
+  revalidatePath("/timeline")
 }
 
 export async function updateProjectAction(
@@ -27,26 +40,31 @@ export async function updateProjectAction(
   endDate: string | null,
   memo: string | null,
   volume: number | null,
+  keyDates: KeyDate[] = [],
 ) {
   if (!name.trim()) return
-  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume)
+  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
   revalidatePath("/project")
+  revalidatePath("/timeline")
 }
 
 export async function deleteProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   deleteProjects(ids)
   revalidatePath("/project")
+  revalidatePath("/timeline")
 }
 
 export async function archiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   archiveProjects(ids)
   revalidatePath("/project")
+  revalidatePath("/timeline")
 }
 
 export async function unarchiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   unarchiveProjects(ids)
   revalidatePath("/project")
+  revalidatePath("/timeline")
 }
