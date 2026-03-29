@@ -15,7 +15,7 @@ async function fetchHolidays(year: number): Promise<string[]> {
 }
 
 export default async function TimelinePage() {
-  const projects = getProjects()
+  const projects = getProjects().filter((p) => !p.archived)
   const users = getUsers()
 
   const today = new Date()
