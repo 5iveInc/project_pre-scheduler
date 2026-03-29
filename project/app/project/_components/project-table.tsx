@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { PlusIcon, Trash2Icon } from "lucide-react"
+import { ArchiveIcon, ArchiveRestoreIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -27,6 +27,8 @@ import {
   addProjectAction,
   updateProjectAction,
   deleteProjectsAction,
+  archiveProjectsAction,
+  unarchiveProjectsAction,
 } from "@/app/project/actions"
 import type { Project, User } from "@/database/db"
 
@@ -243,6 +245,17 @@ function ProjectRow({
     })
   }
 
+  function handleArchiveToggle() {
+    startTransition(async () => {
+      if (project.archived) {
+        await unarchiveProjectsAction([project.id])
+      } else {
+        await archiveProjectsAction([project.id])
+      }
+      setOpen(false)
+    })
+  }
+
   const label = buildAssigneeLabel(project)
 
   return (
@@ -286,6 +299,18 @@ function ProjectRow({
               }}
             />
             <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleArchiveToggle}
+                disabled={isPending}
+              >
+                {project.archived ? (
+                  <><ArchiveRestoreIcon className="mr-1" />作業中へ戻す</>
+                ) : (
+                  <><ArchiveIcon className="mr-1" />アーカイブ</>
+                )}
+              </Button>
               <Button type="submit" disabled={isPending}>
                 保存する
               </Button>
@@ -299,6 +324,8 @@ function ProjectRow({
 
 // ── テーブル ────────────────────────────────────────────────
 
+type Tab = "active" | "archived"
+
 export function ProjectTable({
   projects,
   users,
@@ -306,9 +333,14 @@ export function ProjectTable({
   projects: Project[]
   users: User[]
 }) {
+  const [tab, setTab] = useState<Tab>("active")
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
   const [addOpen, setAddOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
+
+  const activeProjects = projects.filter((p) => !p.archived)
+  const archivedProjects = projects.filter((p) => p.archived)
+  const visibleProjects = tab === "active" ? activeProjects : archivedProjects
 
   function toggleCheck(id: number) {
     setCheckedIds((prev) => {
@@ -319,9 +351,28 @@ export function ProjectTable({
     })
   }
 
+  function switchTab(next: Tab) {
+    setTab(next)
+    setCheckedIds(new Set())
+  }
+
   function handleDelete() {
     startTransition(async () => {
       await deleteProjectsAction(Array.from(checkedIds))
+      setCheckedIds(new Set())
+    })
+  }
+
+  function handleArchive() {
+    startTransition(async () => {
+      await archiveProjectsAction(Array.from(checkedIds))
+      setCheckedIds(new Set())
+    })
+  }
+
+  function handleUnarchive() {
+    startTransition(async () => {
+      await unarchiveProjectsAction(Array.from(checkedIds))
       setCheckedIds(new Set())
     })
   }
@@ -335,31 +386,94 @@ export function ProjectTable({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-4">
-        <div className="flex items-center gap-3">
-          <CardTitle className="text-base font-medium">案件リスト</CardTitle>
-          <Badge variant="secondary">{projects.length} 件</Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          {checkedIds.size > 0 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleDelete}
-              disabled={isPending}
+      <CardHeader className="pb-0">
+        {/* タブ */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1 rounded-lg bg-muted p-1">
+            <button
+              type="button"
+              onClick={() => switchTab("active")}
+              className={[
+                "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                tab === "active"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
             >
-              <Trash2Icon />
-              削除 ({checkedIds.size})
-            </Button>
-          )}
-          <Button size="sm" onClick={() => setAddOpen(true)}>
-            <PlusIcon />
-            案件を追加
-          </Button>
+              作業中
+              <Badge variant="secondary" className="text-xs">{activeProjects.length}</Badge>
+            </button>
+            <button
+              type="button"
+              onClick={() => switchTab("archived")}
+              className={[
+                "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                tab === "archived"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              アーカイブ
+              <Badge variant="secondary" className="text-xs">{archivedProjects.length}</Badge>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {checkedIds.size > 0 && tab === "active" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleArchive}
+                  disabled={isPending}
+                >
+                  <ArchiveIcon />
+                  アーカイブ ({checkedIds.size})
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={isPending}
+                >
+                  <Trash2Icon />
+                  削除 ({checkedIds.size})
+                </Button>
+              </>
+            )}
+            {checkedIds.size > 0 && tab === "archived" && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUnarchive}
+                  disabled={isPending}
+                >
+                  <ArchiveRestoreIcon />
+                  戻す ({checkedIds.size})
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDelete}
+                  disabled={isPending}
+                >
+                  <Trash2Icon />
+                  削除 ({checkedIds.size})
+                </Button>
+              </>
+            )}
+            {tab === "active" && (
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <PlusIcon />
+                案件を追加
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
+      <CardContent className="p-0 pt-2">
         <Table>
           <TableHeader>
             <TableRow>
@@ -371,17 +485,19 @@ export function ProjectTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {projects.length === 0 ? (
+            {visibleProjects.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={5}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
-                  案件がありません。「案件を追加」から登録してください。
+                  {tab === "active"
+                    ? "案件がありません。「案件を追加」から登録してください。"
+                    : "アーカイブされた案件はありません。"}
                 </TableCell>
               </TableRow>
             ) : (
-              projects.map((project) => (
+              visibleProjects.map((project) => (
                 <ProjectRow
                   key={project.id}
                   project={project}

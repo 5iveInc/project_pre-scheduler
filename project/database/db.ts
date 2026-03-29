@@ -71,6 +71,11 @@ function initSchema(db: Database.Database) {
     db.exec(`ALTER TABLE projects ADD COLUMN volume INTEGER`)
   }
 
+  // migration: archived 列がなければ追加
+  if (!columns.some((c) => c.name === "archived")) {
+    db.exec(`ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS project_key_dates (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -149,6 +154,7 @@ export type Project = {
   volume: number | null
   key_dates: KeyDate[]
   created_at: string
+  archived: boolean
 }
 
 type RawProject = {
@@ -164,12 +170,13 @@ type RawProject = {
   volume: number | null
   key_dates_str: string | null
   created_at: string
+  archived: number
 }
 
 export function getProjects(): Project[] {
   const rows = getDb().prepare(`
     SELECT
-      p.id, p.name, p.start_date, p.end_date, p.memo, p.volume, p.created_at,
+      p.id, p.name, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
@@ -204,6 +211,7 @@ export function getProjects(): Project[] {
         })
       : [],
     created_at: row.created_at,
+    archived: row.archived === 1,
   }))
 }
 
@@ -269,6 +277,18 @@ export function deleteProjects(ids: number[]): void {
   if (ids.length === 0) return
   const placeholders = ids.map(() => "?").join(", ")
   getDb().prepare(`DELETE FROM projects WHERE id IN (${placeholders})`).run(...ids)
+}
+
+export function archiveProjects(ids: number[]): void {
+  if (ids.length === 0) return
+  const placeholders = ids.map(() => "?").join(", ")
+  getDb().prepare(`UPDATE projects SET archived=1 WHERE id IN (${placeholders})`).run(...ids)
+}
+
+export function unarchiveProjects(ids: number[]): void {
+  if (ids.length === 0) return
+  const placeholders = ids.map(() => "?").join(", ")
+  getDb().prepare(`UPDATE projects SET archived=0 WHERE id IN (${placeholders})`).run(...ids)
 }
 
 // ── Custom Holidays ────────────────────────────────────────

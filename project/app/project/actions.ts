@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addProject, updateProject, deleteProjects } from "@/database/db"
+import { addProject, updateProject, deleteProjects, archiveProjects, unarchiveProjects } from "@/database/db"
 
 export async function addProjectAction(formData: FormData) {
   const name = (formData.get("name") as string).trim()
@@ -36,5 +36,17 @@ export async function updateProjectAction(
 export async function deleteProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   deleteProjects(ids)
+  revalidatePath("/project")
+}
+
+export async function archiveProjectsAction(ids: number[]) {
+  if (ids.length === 0) return
+  archiveProjects(ids)
+  revalidatePath("/project")
+}
+
+export async function unarchiveProjectsAction(ids: number[]) {
+  if (ids.length === 0) return
+  unarchiveProjects(ids)
   revalidatePath("/project")
 }
