@@ -1,5 +1,7 @@
+@use "../styles/index" as * ;
+
 @import "tailwindcss";
-@import "tw-animate-css";
+@import url("tw-animate-css");
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -25,6 +27,10 @@ main {
   width: 100%;
   max-width: calc(100% - var(--sidebar-width));
   transition: max-width 200ms linear;
+  
+  @media screen and (max-width: $breakpoint-mb) {
+    max-width: 100%;
+  }
 }
 
 [data-slot="sidebar"][data-state="collapsed"] ~ main {
