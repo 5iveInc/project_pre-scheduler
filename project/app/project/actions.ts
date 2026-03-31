@@ -26,7 +26,7 @@ export async function addProjectAction(formData: FormData) {
 
   if (!name) throw new Error("案件名は必須です")
 
-  addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
@@ -43,28 +43,28 @@ export async function updateProjectAction(
   keyDates: KeyDate[] = [],
 ) {
   if (!name.trim()) return
-  updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
+  await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
 
 export async function deleteProjectsAction(ids: number[]) {
   if (ids.length === 0) return
-  deleteProjects(ids)
+  await deleteProjects(ids)
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
 
 export async function archiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
-  archiveProjects(ids)
+  await archiveProjects(ids)
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
 
 export async function unarchiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
-  unarchiveProjects(ids)
+  await unarchiveProjects(ids)
   revalidatePath("/project")
   revalidatePath("/timeline")
 }

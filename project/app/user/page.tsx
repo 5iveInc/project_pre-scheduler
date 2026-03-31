@@ -1,8 +1,8 @@
 import { getUsers } from "@/database/db"
 import { UserList } from "@/app/user/_components/user-list"
 
-export default function UserPage() {
-  const users = getUsers()
+export default async function UserPage() {
+  const users = await getUsers()
 
   return (
     <div className="main">

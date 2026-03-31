@@ -1,9 +1,9 @@
 import { getProjects, getUsers } from "@/database/db"
 import { ProjectTable } from "@/app/project/_components/project-table"
 
-export default function ProjectPage() {
-  const projects = getProjects()
-  const users = getUsers()
+export default async function ProjectPage() {
+  const projects = await getProjects()
+  const users = await getUsers()
 
   return (
     <div className="main">

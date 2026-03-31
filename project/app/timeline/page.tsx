@@ -15,8 +15,12 @@ async function fetchHolidays(year: number): Promise<string[]> {
 }
 
 export default async function TimelinePage() {
-  const projects = getProjects().filter((p) => !p.archived)
-  const users = getUsers()
+  const [projects, users, customHolidays] = await Promise.all([
+    getProjects(),
+    getUsers(),
+    getCustomHolidays(),
+  ])
+  const activeProjects = projects.filter((p) => !p.archived)
 
   const today = new Date()
   const currentYear = today.getFullYear()
@@ -25,7 +29,6 @@ export default async function TimelinePage() {
 
   const holidayArrays = await Promise.all(years.map(fetchHolidays))
   const holidays = holidayArrays.flat()
-  const customHolidays = getCustomHolidays()
 
   return (
     <div className="main">
@@ -38,7 +41,7 @@ export default async function TimelinePage() {
             </p>
           </div>
 
-          <TimelineView projects={projects} users={users} holidays={holidays} customHolidays={customHolidays} />
+          <TimelineView projects={activeProjects} users={users} holidays={holidays} customHolidays={customHolidays} />
         </div>
       </div>
     </div>

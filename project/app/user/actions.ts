@@ -9,7 +9,7 @@ export async function addUserAction(formData: FormData) {
 
   if (!name || !email) throw new Error("名前とメールアドレスは必須です")
 
-  addUser(name, email)
+  await addUser(name, email)
   revalidatePath("/user")
 }
 
@@ -19,12 +19,12 @@ export async function updateUserAction(id: number, formData: FormData) {
 
   if (!name || !email) throw new Error("名前とメールアドレスは必須です")
 
-  updateUser(id, name, email)
+  await updateUser(id, name, email)
   revalidatePath("/user")
 }
 
 export async function deleteUsersAction(ids: number[]) {
   if (ids.length === 0) return
-  deleteUsers(ids)
+  await deleteUsers(ids)
   revalidatePath("/user")
 }

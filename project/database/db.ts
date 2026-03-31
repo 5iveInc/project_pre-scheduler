@@ -1,99 +1,52 @@
-import Database from "better-sqlite3"
-import path from "path"
+import { createClient } from "@libsql/client"
 
-const DB_PATH = path.join(process.cwd(), "database", "data.db")
+const client = createClient({
+  url: process.env.TURSO_DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN!,
+})
 
-let _db: Database.Database | null = null
-
-export function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(DB_PATH)
-    _db.pragma("journal_mode = WAL")
-    _db.pragma("foreign_keys = ON")
-    initSchema(_db)
-  }
-  return _db
-}
-
-function initSchema(db: Database.Database) {
-  db.exec(`
+async function initSchema() {
+  await client.executeMultiple(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `)
-
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       start_date TEXT,
       end_date TEXT,
+      memo TEXT,
+      volume INTEGER,
+      archived INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )
-  `)
-
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS project_assignees (
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
       PRIMARY KEY (project_id, user_id)
-    )
-  `)
-
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS project_supports (
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
       PRIMARY KEY (project_id, user_id)
-    )
-  `)
-
-  // migration: assignee_id 列が残っている場合は中間テーブルへ移行して削除
-  const columns = db.prepare("PRAGMA table_info(projects)").all() as Array<{ name: string }>
-  if (columns.some((c) => c.name === "assignee_id")) {
-    db.exec(`
-      INSERT OR IGNORE INTO project_assignees (project_id, user_id)
-      SELECT id, assignee_id FROM projects WHERE assignee_id IS NOT NULL
-    `)
-    db.exec(`ALTER TABLE projects DROP COLUMN assignee_id`)
-  }
-
-  // migration: memo 列がなければ追加
-  if (!columns.some((c) => c.name === "memo")) {
-    db.exec(`ALTER TABLE projects ADD COLUMN memo TEXT`)
-  }
-
-  // migration: volume 列がなければ追加
-  if (!columns.some((c) => c.name === "volume")) {
-    db.exec(`ALTER TABLE projects ADD COLUMN volume INTEGER`)
-  }
-
-  // migration: archived 列がなければ追加
-  if (!columns.some((c) => c.name === "archived")) {
-    db.exec(`ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
-  }
-
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS project_key_dates (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       date       TEXT NOT NULL,
       label      TEXT NOT NULL DEFAULT ''
-    )
-  `)
-
-  db.exec(`
+    );
     CREATE TABLE IF NOT EXISTS custom_holidays (
       date TEXT PRIMARY KEY
-    )
+    );
   `)
 
-  const count = (db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number }).count
+  const { rows } = await client.execute("SELECT COUNT(*) as count FROM users")
+  const count = rows[0].count as number
   if (count === 0) {
-    const insert = db.prepare("INSERT INTO users (name, email) VALUES (?, ?)")
     const seedUsers = [
       { name: "田中 太郎", email: "tanaka.taro@example.com" },
       { name: "佐藤 花子", email: "sato.hanako@example.com" },
@@ -105,9 +58,21 @@ function initSchema(db: Database.Database) {
       { name: "小林 さくら", email: "kobayashi.sakura@example.com" },
     ]
     for (const user of seedUsers) {
-      insert.run(user.name, user.email)
+      await client.execute({
+        sql: "INSERT INTO users (name, email) VALUES (?, ?)",
+        args: [user.name, user.email],
+      })
     }
   }
+}
+
+let _initPromise: Promise<void> | null = null
+async function getClient() {
+  if (!_initPromise) {
+    _initPromise = initSchema()
+  }
+  await _initPromise
+  return client
 }
 
 // ── Users ──────────────────────────────────────────────────
@@ -119,22 +84,27 @@ export type User = {
   created_at: string
 }
 
-export function getUsers(): User[] {
-  return getDb().prepare("SELECT * FROM users ORDER BY id ASC").all() as User[]
+export async function getUsers(): Promise<User[]> {
+  const db = await getClient()
+  const { rows, columns } = await db.execute("SELECT * FROM users ORDER BY id ASC")
+  return rows.map((row) => Object.fromEntries(columns.map((col, i) => [col, row[i]]))) as unknown as User[]
 }
 
-export function addUser(name: string, email: string): void {
-  getDb().prepare("INSERT INTO users (name, email) VALUES (?, ?)").run(name, email)
+export async function addUser(name: string, email: string): Promise<void> {
+  const db = await getClient()
+  await db.execute({ sql: "INSERT INTO users (name, email) VALUES (?, ?)", args: [name, email] })
 }
 
-export function updateUser(id: number, name: string, email: string): void {
-  getDb().prepare("UPDATE users SET name=?, email=? WHERE id=?").run(name, email, id)
+export async function updateUser(id: number, name: string, email: string): Promise<void> {
+  const db = await getClient()
+  await db.execute({ sql: "UPDATE users SET name=?, email=? WHERE id=?", args: [name, email, id] })
 }
 
-export function deleteUsers(ids: number[]): void {
+export async function deleteUsers(ids: number[]): Promise<void> {
   if (ids.length === 0) return
+  const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  getDb().prepare(`DELETE FROM users WHERE id IN (${placeholders})`).run(...ids)
+  await db.execute({ sql: `DELETE FROM users WHERE id IN (${placeholders})`, args: ids })
 }
 
 // ── Projects ──────────────────────────────────────────────
@@ -173,8 +143,9 @@ type RawProject = {
   archived: number
 }
 
-export function getProjects(): Project[] {
-  const rows = getDb().prepare(`
+export async function getProjects(): Promise<Project[]> {
+  const db = await getClient()
+  const { rows } = await db.execute(`
     SELECT
       p.id, p.name, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
       (SELECT GROUP_CONCAT(pa.user_id)
@@ -191,9 +162,9 @@ export function getProjects(): Project[] {
        FROM project_key_dates kd WHERE kd.project_id = p.id) AS key_dates_str
     FROM projects p
     ORDER BY p.id ASC
-  `).all() as RawProject[]
+  `)
 
-  return rows.map((row) => ({
+  return (rows as unknown as RawProject[]).map((row) => ({
     id: row.id,
     name: row.name,
     assignee_ids: row.assignee_ids_str ? row.assignee_ids_str.split(",").map(Number) : [],
@@ -215,25 +186,28 @@ export function getProjects(): Project[] {
   }))
 }
 
-function insertJunction(
-  db: Database.Database,
-  table: string,
-  projectId: number | bigint,
-  userIds: number[],
-) {
-  const stmt = db.prepare(`INSERT OR IGNORE INTO ${table} (project_id, user_id) VALUES (?, ?)`)
-  for (const userId of userIds) stmt.run(projectId, userId)
-}
-
-function replaceKeyDates(db: Database.Database, projectId: number | bigint, keyDates: KeyDate[]): void {
-  db.prepare("DELETE FROM project_key_dates WHERE project_id=?").run(projectId)
-  const stmt = db.prepare("INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)")
-  for (const kd of keyDates) {
-    if (kd.date) stmt.run(projectId, kd.date, kd.label)
+async function insertJunction(db: typeof client, table: string, projectId: number | bigint, userIds: number[]) {
+  for (const userId of userIds) {
+    await db.execute({
+      sql: `INSERT OR IGNORE INTO ${table} (project_id, user_id) VALUES (?, ?)`,
+      args: [projectId, userId],
+    })
   }
 }
 
-export function addProject(
+async function replaceKeyDates(db: typeof client, projectId: number | bigint, keyDates: KeyDate[]) {
+  await db.execute({ sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [projectId] })
+  for (const kd of keyDates) {
+    if (kd.date) {
+      await db.execute({
+        sql: "INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)",
+        args: [projectId, kd.date, kd.label],
+      })
+    }
+  }
+}
+
+export async function addProject(
   name: string,
   assigneeIds: number[],
   supportIds: number[],
@@ -242,17 +216,19 @@ export function addProject(
   memo: string | null,
   volume: number | null,
   keyDates: KeyDate[] = [],
-): void {
-  const db = getDb()
-  const { lastInsertRowid } = db
-    .prepare("INSERT INTO projects (name, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?)")
-    .run(name, startDate, endDate, memo, volume)
-  insertJunction(db, "project_assignees", lastInsertRowid, assigneeIds)
-  insertJunction(db, "project_supports", lastInsertRowid, supportIds)
-  replaceKeyDates(db, lastInsertRowid, keyDates)
+): Promise<void> {
+  const db = await getClient()
+  const result = await db.execute({
+    sql: "INSERT INTO projects (name, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?)",
+    args: [name, startDate, endDate, memo, volume],
+  })
+  const newId = result.lastInsertRowid!
+  await insertJunction(db, "project_assignees", newId, assigneeIds)
+  await insertJunction(db, "project_supports", newId, supportIds)
+  await replaceKeyDates(db, newId, keyDates)
 }
 
-export function updateProject(
+export async function updateProject(
   id: number,
   name: string,
   assigneeIds: number[],
@@ -262,50 +238,53 @@ export function updateProject(
   memo: string | null,
   volume: number | null,
   keyDates: KeyDate[] = [],
-): void {
-  const db = getDb()
-  db.prepare("UPDATE projects SET name=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?")
-    .run(name, startDate, endDate, memo, volume, id)
-  db.prepare("DELETE FROM project_assignees WHERE project_id=?").run(id)
-  db.prepare("DELETE FROM project_supports WHERE project_id=?").run(id)
-  insertJunction(db, "project_assignees", id, assigneeIds)
-  insertJunction(db, "project_supports", id, supportIds)
-  replaceKeyDates(db, id, keyDates)
+): Promise<void> {
+  const db = await getClient()
+  await db.execute({
+    sql: "UPDATE projects SET name=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?",
+    args: [name, startDate, endDate, memo, volume, id],
+  })
+  await db.execute({ sql: "DELETE FROM project_assignees WHERE project_id=?", args: [id] })
+  await db.execute({ sql: "DELETE FROM project_supports WHERE project_id=?", args: [id] })
+  await insertJunction(db, "project_assignees", id, assigneeIds)
+  await insertJunction(db, "project_supports", id, supportIds)
+  await replaceKeyDates(db, id, keyDates)
 }
 
-export function deleteProjects(ids: number[]): void {
+export async function deleteProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
+  const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  getDb().prepare(`DELETE FROM projects WHERE id IN (${placeholders})`).run(...ids)
+  await db.execute({ sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids })
 }
 
-export function archiveProjects(ids: number[]): void {
+export async function archiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
+  const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  getDb().prepare(`UPDATE projects SET archived=1 WHERE id IN (${placeholders})`).run(...ids)
+  await db.execute({ sql: `UPDATE projects SET archived=1 WHERE id IN (${placeholders})`, args: ids })
 }
 
-export function unarchiveProjects(ids: number[]): void {
+export async function unarchiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
+  const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  getDb().prepare(`UPDATE projects SET archived=0 WHERE id IN (${placeholders})`).run(...ids)
+  await db.execute({ sql: `UPDATE projects SET archived=0 WHERE id IN (${placeholders})`, args: ids })
 }
 
 // ── Custom Holidays ────────────────────────────────────────
 
-export function getCustomHolidays(): string[] {
-  return (getDb().prepare("SELECT date FROM custom_holidays ORDER BY date ASC").all() as { date: string }[]).map(
-    (r) => r.date,
-  )
+export async function getCustomHolidays(): Promise<string[]> {
+  const db = await getClient()
+  const { rows } = await db.execute("SELECT date FROM custom_holidays ORDER BY date ASC")
+  return (rows as unknown as { date: string }[]).map((r) => r.date)
 }
 
-export function setCustomHolidays(dates: string[]): void {
-  const db = getDb()
+export async function setCustomHolidays(dates: string[]): Promise<void> {
+  const db = await getClient()
   const valid = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-  const deleteAll = db.prepare("DELETE FROM custom_holidays")
-  const insert = db.prepare("INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)")
-  db.transaction(() => {
-    deleteAll.run()
-    for (const date of valid) insert.run(date)
-  })()
+  await db.execute("DELETE FROM custom_holidays")
+  for (const date of valid) {
+    await db.execute({ sql: "INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)", args: [date] })
+  }
 }
