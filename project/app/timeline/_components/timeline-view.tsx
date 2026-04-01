@@ -377,8 +377,6 @@ export function TimelineView({
 
   const sortedProjects = useMemo(() => {
     if (!sortKey) return projects
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
     return [...projects].sort((a, b) => {
       if (sortKey === "id") {
         return sortOrder === "asc" ? a.id - b.id : b.id - a.id
@@ -396,9 +394,8 @@ export function TimelineView({
       if (!aDate && !bDate) return 0
       if (!aDate) return 1
       if (!bDate) return -1
-      const aDiff = Math.abs(dayDiff(today, parseLocalDate(aDate)))
-      const bDiff = Math.abs(dayDiff(today, parseLocalDate(bDate)))
-      return sortOrder === "asc" ? aDiff - bDiff : bDiff - aDiff
+      const cmp = aDate.localeCompare(bDate)
+      return sortOrder === "asc" ? cmp : -cmp
     })
   }, [projects, sortKey, sortOrder])
 
