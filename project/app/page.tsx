@@ -64,16 +64,16 @@ export default async function Home() {
                       {nextProjects.length === 0 ? (
                         <p className="text-sm text-muted-foreground">なし</p>
                       ) : (
-                        <ul className="flex flex-col gap-2">
+                        <ul className="flex flex-col gap-3">
                           {nextProjects.map((project) => (
                             <li key={project.id} className="text-sm leading-snug text-muted-foreground">
-                              <div className="block">
+                              <span className="font-bold text-foreground block mb-1">{project.name}</span>
+                              <div className="block pl-[1.5em] relative before:content-['→'] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2">
                                 <span className="mr-3">開始日：{project.start_date!.slice(5, 7).replace(/^0/, "")}/{project.start_date!.slice(8, 10).replace(/^0/, "")}</span>
                                 {project.volume !== null && (
                                   <span className="mr-1">【Lv.{project.volume}】</span>
                                 )}
                               </div>
-                              <span className="font-bold text-foreground">{project.name}</span>
                             </li>
                           ))}
                         </ul>
