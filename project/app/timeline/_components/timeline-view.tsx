@@ -1140,7 +1140,7 @@ export function TimelineView({
                         <div
                           key={u.id}
                           style={{ height: rowHeight }}
-                          className="w-full border-b last:border-b-0 flex items-center px-3"
+                          className="w-full border-b border-black last:border-b-0 flex items-center px-3"
                         >
                           <span className="text-sm font-medium truncate">{u.name}</span>
                         </div>
@@ -1169,7 +1169,7 @@ export function TimelineView({
                           <div
                             key={u.id}
                             style={{ height: rowHeight, width: totalMonthWidth, position: "relative" }}
-                            className="flex border-b last:border-b-0"
+                            className="flex border-b border-black last:border-b-0"
                           >
                             {monthViewMonths.map((m) => (
                               <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
@@ -1262,7 +1262,7 @@ export function TimelineView({
                         <div
                           key={u.id}
                           style={{ height: rowHeight }}
-                          className="w-full border-b last:border-b-0 flex items-center px-3"
+                          className="w-full border-b border-black last:border-b-0 flex items-center px-3"
                         >
                           <span className="text-sm font-medium truncate">{u.name}</span>
                         </div>
@@ -1333,7 +1333,7 @@ export function TimelineView({
                           <div
                             key={u.id}
                             style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                            className="border-b last:border-b-0"
+                            className="border-b border-black last:border-b-0"
                           >
                             {/* 今日のカラムハイライト */}
                             {showTodayLine && (
