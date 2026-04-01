@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const navItems = [
-  { href: "/", label: "ホーム", icon: HomeIcon },
+  { href: "/", label: "ダッシュボード", icon: HomeIcon },
   { href: "/user", label: "ユーザー一覧", icon: UsersIcon },
   { href: "/project", label: "案件一覧", icon: FolderIcon },
   { href: "/timeline", label: "タイムライン", icon: GanttChartIcon },
