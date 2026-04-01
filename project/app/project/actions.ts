@@ -27,6 +27,7 @@ export async function addProjectAction(formData: FormData) {
   if (!name) throw new Error("案件名は必須です")
 
   await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+  revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
@@ -44,6 +45,7 @@ export async function updateProjectAction(
 ) {
   if (!name.trim()) return
   await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
+  revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
@@ -51,6 +53,7 @@ export async function updateProjectAction(
 export async function deleteProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   await deleteProjects(ids)
+  revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
@@ -58,6 +61,7 @@ export async function deleteProjectsAction(ids: number[]) {
 export async function archiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   await archiveProjects(ids)
+  revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
 }
@@ -65,6 +69,7 @@ export async function archiveProjectsAction(ids: number[]) {
 export async function unarchiveProjectsAction(ids: number[]) {
   if (ids.length === 0) return
   await unarchiveProjects(ids)
+  revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
 }

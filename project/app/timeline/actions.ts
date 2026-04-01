@@ -25,6 +25,7 @@ export async function addProjectTimelineAction(formData: FormData) {
   const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
   if (!name) throw new Error("案件名は必須です")
   await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+  revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")
 }
@@ -47,6 +48,7 @@ export async function updateProjectTimelineAction(
 ) {
   if (!name.trim()) return
   await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
+  revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")
 }
