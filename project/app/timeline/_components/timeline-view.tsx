@@ -332,10 +332,8 @@ export function TimelineView({
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef<HTMLDivElement>(null)
 
-  // 案件タブ絞り込み（hiddenProjectIds に含まれる案件は非表示）
-  const [hiddenProjectIds, setHiddenProjectIds] = useState<Set<number>>(new Set())
-  const [projectFilterOpen, setProjectFilterOpen] = useState(false)
-  const projectFilterRef = useRef<HTMLDivElement>(null)
+  // 案件タブ絞り込み（受注済のみ表示）
+  const [showOrderedOnly, setShowOrderedOnly] = useState(false)
 
   // 担当タブ絞り込み（hiddenUserIds に含まれるユーザーは非表示）
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<number>>(new Set())
@@ -352,17 +350,6 @@ export function TimelineView({
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [sortMenuOpen])
-
-  useEffect(() => {
-    if (!projectFilterOpen) return
-    function handleClickOutside(e: MouseEvent) {
-      if (projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) {
-        setProjectFilterOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [projectFilterOpen])
 
   useEffect(() => {
     if (!assignFilterOpen) return
@@ -400,8 +387,8 @@ export function TimelineView({
   }, [projects, sortKey, sortOrder])
 
   const visibleProjects = useMemo(
-    () => sortedProjects.filter((p) => !hiddenProjectIds.has(p.id)),
-    [sortedProjects, hiddenProjectIds],
+    () => showOrderedOnly ? sortedProjects.filter((p) => p.status === "受注済") : sortedProjects,
+    [sortedProjects, showOrderedOnly],
   )
 
   function handleSortOption(key: SortKey) {
@@ -588,63 +575,15 @@ export function TimelineView({
           )}
         </div>
         {/* 絞り込みボタン（案件タブ） */}
-        <div ref={projectFilterRef} className="relative">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setProjectFilterOpen((prev) => !prev)}
-            className={hiddenProjectIds.size > 0 ? "border-primary text-primary" : ""}
-          >
-            <ListFilterIcon className="size-4" />
-            絞り込み
-          </Button>
-          {projectFilterOpen && (
-            <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-md border bg-background shadow-md py-1">
-              <div className="flex items-center justify-between px-3 py-1.5 border-b">
-                <span className="text-xs font-semibold text-muted-foreground">表示する案件</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => setHiddenProjectIds(new Set())}
-                  >
-                    すべて表示
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs text-muted-foreground hover:underline"
-                    onClick={() => setHiddenProjectIds(new Set(projects.map((p) => p.id)))}
-                  >
-                    すべて非表示
-                  </button>
-                </div>
-              </div>
-              <div className="max-h-60 overflow-y-auto">
-                {projects.map((p) => (
-                  <label
-                    key={p.id}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!hiddenProjectIds.has(p.id)}
-                      onChange={(e) => {
-                        setHiddenProjectIds((prev) => {
-                          const next = new Set(prev)
-                          if (e.target.checked) next.delete(p.id)
-                          else next.add(p.id)
-                          return next
-                        })
-                      }}
-                      className="size-4 rounded border-input accent-primary shrink-0"
-                    />
-                    <span className="truncate">{p.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showOrderedOnly}
+            onChange={(e) => setShowOrderedOnly(e.target.checked)}
+            className="size-4 rounded border-input accent-primary"
+          />
+          受注済のみ
+        </label>
         <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
           <Settings2Icon className="size-4" />
           設定
@@ -1010,13 +949,14 @@ export function TimelineView({
 
       {/* ── 担当タブ ── */}
       {activeTab === "assign" && (() => {
+        const filteredProjects = showOrderedOnly ? projects.filter((p) => p.status === "受注済") : projects
         const assigneeUsers = users.filter((u) =>
-          projects.some((p) => p.assignee_ids.includes(u.id))
+          filteredProjects.some((p) => p.assignee_ids.includes(u.id))
         )
         const visibleAssigneeUsers = assigneeUsers.filter((u) => !hiddenUserIds.has(u.id))
         // ユーザーごとにレーン割り当てを事前計算
         const userLaneData = visibleAssigneeUsers.map((u) => {
-          const userProjects = projects.filter((p) => p.assignee_ids.includes(u.id))
+          const userProjects = filteredProjects.filter((p) => p.assignee_ids.includes(u.id))
           const { assignments, laneCount } = calcLanes(userProjects)
           return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT }
         })
@@ -1050,6 +990,16 @@ export function TimelineView({
                   日
                 </Button>
               </div>
+              {/* 受注済のみ（担当タブ） */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showOrderedOnly}
+                  onChange={(e) => setShowOrderedOnly(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary"
+                />
+                受注済のみ
+              </label>
               {/* 絞り込みボタン（担当タブ） */}
               <div ref={assignFilterRef} className="relative">
                 <Button
