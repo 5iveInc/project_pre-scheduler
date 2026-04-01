@@ -47,6 +47,11 @@ function barColorFromVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_COLORS[volume] ?? VOLUME_COLORS[3]) : VOLUME_COLORS[3]
 }
 
+function barColorFromProject(p: Project): string {
+  if (p.status === "相談中") return "#d1d5db" // gray-300
+  return barColorFromVolume(p.volume)
+}
+
 // ── 日付ユーティリティ ──────────────────────────────────────
 
 function parseLocalDate(str: string): Date {
@@ -707,7 +712,7 @@ export function TimelineView({
                 ) : (
                   visibleProjects.map((p) => {
                     const barInfo = calcMonthViewBar(p, monthViewMonths)
-                    const barColor = barColorFromVolume(p.volume)
+                    const barColor = barColorFromProject(p)
                     const keyDateEntries = Object.entries(
                       p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
@@ -899,7 +904,7 @@ export function TimelineView({
                       }
                     }
 
-                    const barColor = barColorFromVolume(p.volume)
+                    const barColor = barColorFromProject(p)
 
                     return (
                       <div
@@ -1190,7 +1195,7 @@ export function TimelineView({
                                       width: `${barInfo.widthPct}%`,
                                       top: barTop,
                                       height: barHeight,
-                                      backgroundColor: barColorFromVolume(p.volume),
+                                      backgroundColor: barColorFromProject(p),
                                     }}
                                     onClick={() => setEditProject(p)}
                                     title={`${p.name}（クリックで編集）`}
@@ -1375,7 +1380,7 @@ export function TimelineView({
                                       width: barWidth,
                                       top: barTop,
                                       height: barHeight,
-                                      backgroundColor: barColorFromVolume(p.volume),
+                                      backgroundColor: barColorFromProject(p),
                                     }}
                                     onClick={() => setEditProject(p)}
                                     title={`${p.name}（クリックで編集）`}

@@ -44,6 +44,13 @@ async function initSchema() {
     );
   `)
 
+  // status カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
+  try {
+    await client.execute("ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT '相談中'")
+  } catch {
+    // 既にカラムが存在する場合は無視
+  }
+
   const { rows } = await client.execute("SELECT COUNT(*) as count FROM users")
   const count = rows[0].count as number
   if (count === 0) {
@@ -111,9 +118,12 @@ export async function deleteUsers(ids: number[]): Promise<void> {
 
 export type KeyDate = { date: string; label: string }
 
+export type ProjectStatus = "相談中" | "受注済"
+
 export type Project = {
   id: number
   name: string
+  status: ProjectStatus
   assignee_ids: number[]
   assignee_names: string[]
   support_ids: number[]
@@ -130,6 +140,7 @@ export type Project = {
 type RawProject = {
   id: number
   name: string
+  status: string
   assignee_ids_str: string | null
   assignee_names_str: string | null
   support_ids_str: string | null
@@ -147,7 +158,7 @@ export async function getProjects(): Promise<Project[]> {
   const db = await getClient()
   const { rows } = await db.execute(`
     SELECT
-      p.id, p.name, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
+      p.id, p.name, p.status, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
@@ -167,6 +178,7 @@ export async function getProjects(): Promise<Project[]> {
   return (rows as unknown as RawProject[]).map((row) => ({
     id: row.id,
     name: row.name,
+    status: (row.status === "受注済" ? "受注済" : "相談中") as ProjectStatus,
     assignee_ids: row.assignee_ids_str ? row.assignee_ids_str.split(",").map(Number) : [],
     assignee_names: row.assignee_names_str ? row.assignee_names_str.split("|||") : [],
     support_ids: row.support_ids_str ? row.support_ids_str.split(",").map(Number) : [],
@@ -216,11 +228,12 @@ export async function addProject(
   memo: string | null,
   volume: number | null,
   keyDates: KeyDate[] = [],
+  status: ProjectStatus = "相談中",
 ): Promise<void> {
   const db = await getClient()
   const result = await db.execute({
-    sql: "INSERT INTO projects (name, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?)",
-    args: [name, startDate, endDate, memo, volume],
+    sql: "INSERT INTO projects (name, status, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [name, status, startDate, endDate, memo, volume],
   })
   const newId = result.lastInsertRowid!
   await insertJunction(db, "project_assignees", newId, assigneeIds)
@@ -238,11 +251,12 @@ export async function updateProject(
   memo: string | null,
   volume: number | null,
   keyDates: KeyDate[] = [],
+  status: ProjectStatus = "相談中",
 ): Promise<void> {
   const db = await getClient()
   await db.execute({
-    sql: "UPDATE projects SET name=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?",
-    args: [name, startDate, endDate, memo, volume, id],
+    sql: "UPDATE projects SET name=?, status=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?",
+    args: [name, status, startDate, endDate, memo, volume, id],
   })
   await db.execute({ sql: "DELETE FROM project_assignees WHERE project_id=?", args: [id] })
   await db.execute({ sql: "DELETE FROM project_supports WHERE project_id=?", args: [id] })

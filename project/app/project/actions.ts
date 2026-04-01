@@ -23,10 +23,12 @@ export async function addProjectAction(formData: FormData) {
   const memo = (formData.get("memo") as string) || null
   const volume = Number(formData.get("volume")) || null
   const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
+  const rawStatus = formData.get("status") as string | null
+  const status = rawStatus === "受注済" ? "受注済" : "相談中"
 
   if (!name) throw new Error("案件名は必須です")
 
-  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
   revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
@@ -42,9 +44,10 @@ export async function updateProjectAction(
   memo: string | null,
   volume: number | null,
   keyDates: KeyDate[] = [],
+  status: "相談中" | "受注済" = "相談中",
 ) {
   if (!name.trim()) return
-  await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
+  await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates, status)
   revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")

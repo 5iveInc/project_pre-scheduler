@@ -61,6 +61,7 @@ export function ProjectFormFields({
   users: User[]
   defaultValues?: {
     name?: string
+    status?: "相談中" | "受注済"
     assigneeIds?: number[]
     supportIds?: number[]
     startDate?: string | null
@@ -71,6 +72,7 @@ export function ProjectFormFields({
   }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
+  const [status, setStatus] = useState<"相談中" | "受注済">(defaultValues?.status ?? "相談中")
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
@@ -107,6 +109,28 @@ export function ProjectFormFields({
           onChange={(e) => setName(e.target.value)}
           required
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>ステータス</Label>
+        <input type="hidden" name="status" value={status} />
+        <div className="flex rounded-md border border-input overflow-hidden w-fit">
+          {(["相談中", "受注済"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatus(s)}
+              className={[
+                "px-4 py-1.5 text-sm font-medium transition-colors",
+                status === s
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted",
+              ].join(" ")}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex gap-1">
@@ -259,13 +283,15 @@ export function ProjectEditModal({
     const endDate = (formData.get("endDate") as string) || null
     const memo = (formData.get("memo") as string) || null
     const volume = Number(formData.get("volume")) || null
+    const rawStatus = formData.get("status") as string | null
+    const status = rawStatus === "受注済" ? "受注済" : "相談中"
     let keyDates: { date: string; label: string }[] = []
     try {
       const raw = formData.get("keyDatesJson") as string | null
       if (raw) keyDates = JSON.parse(raw)
     } catch { /* ignore */ }
     startTransition(async () => {
-      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
       onOpenChange(false)
     })
   }
@@ -294,6 +320,7 @@ export function ProjectEditModal({
               users={users}
               defaultValues={{
                 name: project.name,
+                status: project.status,
                 assigneeIds: project.assignee_ids,
                 supportIds: project.support_ids,
                 startDate: project.start_date,
