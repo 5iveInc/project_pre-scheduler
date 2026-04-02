@@ -172,6 +172,9 @@ export function ProjectFormFields({
             name="endDate"
             type="date"
             value={endDate ?? ""}
+            onFocus={() => {
+              if (!endDate && startDate) setEndDate(startDate)
+            }}
             onChange={(e) => setEndDate(e.target.value)}
           />
         </div>
