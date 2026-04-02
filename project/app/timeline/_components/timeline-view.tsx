@@ -156,6 +156,45 @@ function calcMonthViewBar(
   return { leftPct, widthPct: rightPct - leftPct }
 }
 
+// ── 空き日範囲の計算（担当タブ用）──────────────────────────────
+// 本日以降で案件が1つも入っていない日のインデックス範囲を返す
+function computeEmptyRanges(
+  assignments: Array<{ project: Project; lane: number }>,
+  startDate: Date,
+  totalDays: number,
+  todayIndex: number,
+  dates: Date[],
+  holidaySet: Set<string>,
+): Array<{ fromIdx: number; toIdx: number }> {
+  function toYMD(d: Date) {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+  }
+  function isRest(d: Date) {
+    return d.getDay() === 0 || d.getDay() === 6 || holidaySet.has(toYMD(d))
+  }
+
+  const covered = new Uint8Array(totalDays)
+  for (const { project: p } of assignments) {
+    if (!p.start_date || !p.end_date) continue
+    const si = Math.max(todayIndex, dayDiff(startDate, parseLocalDate(p.start_date)))
+    const ei = Math.min(totalDays - 1, dayDiff(startDate, parseLocalDate(p.end_date)))
+    for (let i = si; i <= ei; i++) covered[i] = 1
+  }
+  const ranges: Array<{ fromIdx: number; toIdx: number }> = []
+  let i = Math.max(0, todayIndex)
+  while (i < totalDays) {
+    // 休日はハイライト対象外（スキップ）
+    if (isRest(dates[i]) || covered[i]) {
+      i++
+    } else {
+      const from = i
+      while (i < totalDays && !covered[i] && !isRest(dates[i])) i++
+      ranges.push({ fromIdx: from, toIdx: i - 1 })
+    }
+  }
+  return ranges
+}
+
 // ── レーン割り当て（担当タブ用）──────────────────────────────
 // 重なる案件を別レーンに振り分ける（最小レーン数でグリーディ割り当て）
 function calcLanes(projectList: Project[]): {
@@ -334,6 +373,9 @@ export function TimelineView({
 
   // 案件タブ絞り込み（受注済のみ表示）
   const [showOrderedOnly, setShowOrderedOnly] = useState(false)
+
+  // 担当タブ 空きハイライト
+  const [showAvailabilityHighlight, setShowAvailabilityHighlight] = useState(false)
 
   // 担当タブ絞り込み（hiddenUserIds に含まれるユーザーは非表示）
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<number>>(new Set())
@@ -1000,6 +1042,16 @@ export function TimelineView({
                 />
                 受注済のみ
               </label>
+              {/* 空きハイライト（担当タブ） */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showAvailabilityHighlight}
+                  onChange={(e) => setShowAvailabilityHighlight(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary"
+                />
+                空きハイライト
+              </label>
               {/* 絞り込みボタン（担当タブ） */}
               <div ref={assignFilterRef} className="relative">
                 <Button
@@ -1276,12 +1328,28 @@ export function TimelineView({
                           担当者が割り当てられた案件がありません。
                         </div>
                       ) : (
-                        userLaneData.map(({ user: u, assignments, rowHeight }) => (
+                        userLaneData.map(({ user: u, assignments, rowHeight }) => {
+                          const coveredRanges = showAvailabilityHighlight
+                            ? computeEmptyRanges(assignments, start, totalDays, todayIndex, dates, holidaySet)
+                            : []
+                          return (
                           <div
                             key={u.id}
                             style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
                             className="border-b border-black last:border-b-0"
                           >
+                            {/* 空きハイライト（オレンジ） */}
+                            {coveredRanges.map(({ fromIdx, toIdx }) => (
+                              <div
+                                key={fromIdx}
+                                className="absolute top-0 bottom-0 pointer-events-none"
+                                style={{
+                                  left: fromIdx * dayWidth,
+                                  width: (toIdx - fromIdx + 1) * dayWidth,
+                                  backgroundColor: "rgba(251,146,60,0.35)",
+                                }}
+                              />
+                            ))}
                             {/* 今日のカラムハイライト */}
                             {showTodayLine && (
                               <div
@@ -1370,7 +1438,7 @@ export function TimelineView({
                               )
                             })}
                           </div>
-                        ))
+                        )})
                       )}
                     </div>
                   </div>
