@@ -8,6 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## データベース操作
 - データベースへの書き込み（INSERT / UPDATE / DELETE）は、必ず事前にユーザーの確認を取ること
+- seed データ挿入は絶対に実行してはいけません。既存のデータを上書き、削除する行為は禁止です。
 - 確認なしにデータを変更してはならない
 - 外部DB（Turso）を破壊しないことを前提に実装してください。
 
