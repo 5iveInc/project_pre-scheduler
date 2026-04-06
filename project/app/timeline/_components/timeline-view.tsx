@@ -573,7 +573,7 @@ export function TimelineView({
             ) : (
               <ArrowUpDownIcon className="size-4" />
             )}
-            並び替え
+            {sortKey ? SORT_OPTIONS.find((o) => o.key === sortKey)?.label : "並び替え"}
           </Button>
           {sortMenuOpen && (
             <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border bg-background shadow-md py-1">
