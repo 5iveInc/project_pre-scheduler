@@ -209,7 +209,7 @@ async function insertJunction(db: typeof client, table: string, projectId: numbe
 
 async function replaceKeyDates(db: typeof client, projectId: number | bigint, keyDates: KeyDate[]) {
   await db.execute({ sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [projectId] })
-  const sorted = [...keyDates].sort((a, b) => a.date.localeCompare(b.date))
+  const sorted = [...keyDates].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   for (const kd of sorted) {
     if (kd.date) {
       await db.execute({
