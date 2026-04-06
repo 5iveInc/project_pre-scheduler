@@ -366,7 +366,7 @@ export function TimelineView({
     })
   }
 
-  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey | null>("start_date")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef<HTMLDivElement>(null)
