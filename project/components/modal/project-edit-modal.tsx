@@ -187,18 +187,20 @@ export function ProjectFormFields({
           {keyDates.map((kd, i) => (
             <div key={i} className="flex items-center gap-2">
               <Input
-                type="date"
-                value={kd.date}
-                onChange={(e) =>
-                  setKeyDates((prev) => prev.map((d, j) => (j === i ? { ...d, date: e.target.value } : d)))
-                }
-              />
-              <Input
                 type="text"
                 placeholder="ラベル"
                 value={kd.label}
+                className="w-[25%]"
                 onChange={(e) =>
                   setKeyDates((prev) => prev.map((d, j) => (j === i ? { ...d, label: e.target.value } : d)))
+                }
+              />
+              <Input
+                type="date"
+                value={kd.date}
+                className="w-[25%]"
+                onChange={(e) =>
+                  setKeyDates((prev) => prev.map((d, j) => (j === i ? { ...d, date: e.target.value } : d)))
                 }
               />
               <Button
