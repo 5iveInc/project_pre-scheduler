@@ -170,7 +170,7 @@ export async function getProjects(): Promise<Project[]> {
        FROM project_supports ps JOIN users u ON u.id = ps.user_id
        WHERE ps.project_id = p.id) AS support_names_str,
       (SELECT GROUP_CONCAT(kd.date || '|||' || kd.label, '~~~')
-       FROM project_key_dates kd WHERE kd.project_id = p.id) AS key_dates_str
+       FROM (SELECT date, label FROM project_key_dates WHERE project_id = p.id ORDER BY date ASC) kd) AS key_dates_str
     FROM projects p
     ORDER BY p.id ASC
   `)
@@ -209,7 +209,8 @@ async function insertJunction(db: typeof client, table: string, projectId: numbe
 
 async function replaceKeyDates(db: typeof client, projectId: number | bigint, keyDates: KeyDate[]) {
   await db.execute({ sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [projectId] })
-  for (const kd of keyDates) {
+  const sorted = [...keyDates].sort((a, b) => a.date.localeCompare(b.date))
+  for (const kd of sorted) {
     if (kd.date) {
       await db.execute({
         sql: "INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)",
