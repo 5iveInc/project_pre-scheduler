@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { HomeIcon, UsersIcon, FolderIcon, GanttChartIcon } from "lucide-react"
+import { HomeIcon, UsersIcon, FolderIcon, GanttChartIcon, CircleAlertIcon } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +17,7 @@ const navItems = [
   { href: "/user", label: "ユーザー一覧", icon: UsersIcon },
   { href: "/project", label: "案件一覧", icon: FolderIcon },
   { href: "/timeline", label: "タイムライン", icon: GanttChartIcon },
+  { href: "https://github.com/5iveInc/project_pre-scheduler/issues", label: "Issue", icon: CircleAlertIcon, external: true },
 ]
 
 export function AppSidebar() {
@@ -32,7 +33,7 @@ export function AppSidebar() {
           {navItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
-                render={<Link href={item.href} />}
+                render={<Link href={item.href} {...(item.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} />}
                 isActive={pathname === item.href}
                 tooltip={item.label}
               >
