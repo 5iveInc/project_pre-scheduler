@@ -26,6 +26,8 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "end_date", label: "終了日" },
 ]
 
+const SORT_LABEL_MAP = new Map(SORT_OPTIONS.map(({ key, label }) => [key, label]))
+
 // ── 定数 ───────────────────────────────────────────────────
 const DEFAULT_DAY_WIDTH = 32
 const MIN_DAY_WIDTH = 17
@@ -573,7 +575,7 @@ export function TimelineView({
             ) : (
               <ArrowUpDownIcon className="size-4" />
             )}
-            並び替え
+            {sortKey ? SORT_LABEL_MAP.get(sortKey) : "並び替え"}
           </Button>
           {sortMenuOpen && (
             <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-md border bg-background shadow-md py-1">
