@@ -356,6 +356,7 @@ export function TimelineView({
   }, [viewMode, activeTab])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
+  const [memoTooltip, setMemoTooltip] = useState<{ memo: string; x: number; y: number } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
@@ -710,29 +711,23 @@ export function TimelineView({
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
                         {barInfo && (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={<div />}
-                              className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                              style={{
-                                left: `${barInfo.leftPct}%`,
-                                width: `${barInfo.widthPct}%`,
-                                top: 10,
-                                bottom: 10,
-                                backgroundColor: barColor,
-                              }}
-                              onClick={() => setEditProject(p)}
-                            >
-                              <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                {p.name}
-                              </span>
-                            </TooltipTrigger>
-                            {p.memo && (
-                              <TooltipContent>
-                                <span className="whitespace-pre-line">{p.memo}</span>
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
+                          <div
+                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            style={{
+                              left: `${barInfo.leftPct}%`,
+                              width: `${barInfo.widthPct}%`,
+                              top: 10,
+                              bottom: 10,
+                              backgroundColor: barColor,
+                            }}
+                            onClick={() => setEditProject(p)}
+                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
+                          >
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                              {p.name}
+                            </span>
+                          </div>
                         )}
                         {keyDateEntries.map(([date, labels]) => {
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
@@ -928,29 +923,23 @@ export function TimelineView({
 
                         {/* バー */}
                         {barLeft !== null && barWidth !== null && (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={<div />}
-                              className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                              style={{
-                                left: barLeft,
-                                width: barWidth,
-                                top: 10,
-                                bottom: 10,
-                                backgroundColor: barColor,
-                              }}
-                              onClick={() => setEditProject(p)}
-                            >
-                              <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                {p.name}
-                              </span>
-                            </TooltipTrigger>
-                            {p.memo && (
-                              <TooltipContent>
-                                <span className="whitespace-pre-line">{p.memo}</span>
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
+                          <div
+                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            style={{
+                              left: barLeft,
+                              width: barWidth,
+                              top: 10,
+                              bottom: 10,
+                              backgroundColor: barColor,
+                            }}
+                            onClick={() => setEditProject(p)}
+                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
+                          >
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                              {p.name}
+                            </span>
+                          </div>
                         )}
 
                         {/* 日付メモの赤丸（同日はまとめて1つに） */}
@@ -1199,29 +1188,23 @@ export function TimelineView({
                               )
                               return (
                                 <div key={p.id}>
-                                  <Tooltip>
-                                    <TooltipTrigger
-                                      render={<div />}
-                                      className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                      style={{
-                                        left: `${barInfo.leftPct}%`,
-                                        width: `${barInfo.widthPct}%`,
-                                        top: barTop,
-                                        height: barHeight,
-                                        backgroundColor: barColorFromProject(p),
-                                      }}
-                                      onClick={() => setEditProject(p)}
-                                    >
-                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                        {p.name}
-                                      </span>
-                                    </TooltipTrigger>
-                                    {p.memo && (
-                                      <TooltipContent>
-                                        <span className="whitespace-pre-line">{p.memo}</span>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
+                                  <div
+                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    style={{
+                                      left: `${barInfo.leftPct}%`,
+                                      width: `${barInfo.widthPct}%`,
+                                      top: barTop,
+                                      height: barHeight,
+                                      backgroundColor: barColorFromProject(p),
+                                    }}
+                                    onClick={() => setEditProject(p)}
+                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
+                                  >
+                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                      {p.name}
+                                    </span>
+                                  </div>
                                   {keyDateEntries.map(([date, labels]) => {
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                                     if (centerPct === null) return null
@@ -1405,29 +1388,23 @@ export function TimelineView({
                               const barHeight = ROW_HEIGHT - 20
                               return (
                                 <div key={p.id}>
-                                  <Tooltip>
-                                    <TooltipTrigger
-                                      render={<div />}
-                                      className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                      style={{
-                                        left: barLeft,
-                                        width: barWidth,
-                                        top: barTop,
-                                        height: barHeight,
-                                        backgroundColor: barColorFromProject(p),
-                                      }}
-                                      onClick={() => setEditProject(p)}
-                                    >
-                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                        {p.name}
-                                      </span>
-                                    </TooltipTrigger>
-                                    {p.memo && (
-                                      <TooltipContent>
-                                        <span className="whitespace-pre-line">{p.memo}</span>
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
+                                  <div
+                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    style={{
+                                      left: barLeft,
+                                      width: barWidth,
+                                      top: barTop,
+                                      height: barHeight,
+                                      backgroundColor: barColorFromProject(p),
+                                    }}
+                                    onClick={() => setEditProject(p)}
+                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
+                                  >
+                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                      {p.name}
+                                    </span>
+                                  </div>
                                   {/* 日付メモの赤丸 */}
                                   {Object.entries(
                                     p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
@@ -1553,6 +1530,15 @@ export function TimelineView({
           </form>
         </DialogContent>
       </Dialog>
+      {/* メモのカーソル追従ツールチップ */}
+      {memoTooltip && (
+        <div
+          className="fixed z-50 pointer-events-none rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md max-w-xs"
+          style={{ left: memoTooltip.x + 12, top: memoTooltip.y + 16 }}
+        >
+          <span className="whitespace-pre-line">{memoTooltip.memo}</span>
+        </div>
+      )}
     </TooltipProvider>
   )
 }
