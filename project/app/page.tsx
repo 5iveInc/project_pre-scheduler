@@ -8,7 +8,7 @@ export default async function Home() {
   const today = new Date().toISOString().slice(0, 10)
 
   const [users, projects] = await Promise.all([getUsers(), getProjects()])
-  const allProjects = projects.filter((p) => !p.archived && p.start_date !== null)
+  const allProjects = projects.filter((p) => !p.archived && p.start_date !== null && p.status !== "相談中")
 
   const activeProjects = allProjects.filter(
     (p) => p.end_date !== null && p.start_date! <= today && today <= p.end_date,
