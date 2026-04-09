@@ -511,7 +511,7 @@ export function TimelineView({
   ]
 
   return (
-    <>
+    <TooltipProvider>
       {/* ── タブ ── */}
       <div className="border-b mb-4">
         <div className="flex gap-0">
@@ -710,44 +710,49 @@ export function TimelineView({
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
                         {barInfo && (
-                          <div
-                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                            style={{
-                              left: `${barInfo.leftPct}%`,
-                              width: `${barInfo.widthPct}%`,
-                              top: 10,
-                              bottom: 10,
-                              backgroundColor: barColor,
-                            }}
-                            onClick={() => setEditProject(p)}
-                            title={`${p.name}（クリックで編集）`}
-                          >
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.name}
-                            </span>
-                          </div>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={<div />}
+                              className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                              style={{
+                                left: `${barInfo.leftPct}%`,
+                                width: `${barInfo.widthPct}%`,
+                                top: 10,
+                                bottom: 10,
+                                backgroundColor: barColor,
+                              }}
+                              onClick={() => setEditProject(p)}
+                            >
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                {p.name}
+                              </span>
+                            </TooltipTrigger>
+                            {p.memo && (
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{p.memo}</span>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
                         )}
                         {keyDateEntries.map(([date, labels]) => {
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                           if (centerPct === null) return null
                           return (
-                            <TooltipProvider key={date}>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  className="absolute rounded-full z-10 cursor-default"
-                                  style={{
-                                    left: `calc(${centerPct}% - 5px)`,
-                                    top: ROW_HEIGHT / 2 - 5,
-                                    width: 10,
-                                    height: 10,
-                                    backgroundColor: "#ef4444",
-                                  }}
-                                />
-                                <TooltipContent>
-                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip key={date}>
+                              <TooltipTrigger
+                                className="absolute rounded-full z-10 cursor-default"
+                                style={{
+                                  left: `calc(${centerPct}% - 5px)`,
+                                  top: ROW_HEIGHT / 2 - 5,
+                                  width: 10,
+                                  height: 10,
+                                  backgroundColor: "#ef4444",
+                                }}
+                              />
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                              </TooltipContent>
+                            </Tooltip>
                           )
                         })}
                       </div>
@@ -923,22 +928,29 @@ export function TimelineView({
 
                         {/* バー */}
                         {barLeft !== null && barWidth !== null && (
-                          <div
-                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                            style={{
-                              left: barLeft,
-                              width: barWidth,
-                              top: 10,
-                              bottom: 10,
-                              backgroundColor: barColor,
-                            }}
-                            onClick={() => setEditProject(p)}
-                            title={`${p.name}（クリックで編集）`}
-                          >
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.name}
-                            </span>
-                          </div>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={<div />}
+                              className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                              style={{
+                                left: barLeft,
+                                width: barWidth,
+                                top: 10,
+                                bottom: 10,
+                                backgroundColor: barColor,
+                              }}
+                              onClick={() => setEditProject(p)}
+                            >
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                {p.name}
+                              </span>
+                            </TooltipTrigger>
+                            {p.memo && (
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{p.memo}</span>
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
                         )}
 
                         {/* 日付メモの赤丸（同日はまとめて1つに） */}
@@ -952,23 +964,21 @@ export function TimelineView({
                           const kdIdx = dayDiff(start, parseLocalDate(date))
                           if (kdIdx < 0 || kdIdx >= totalDays) return null
                           return (
-                            <TooltipProvider key={date}>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  className="absolute rounded-full z-10 cursor-default"
-                                  style={{
-                                    left: kdIdx * dayWidth + dayWidth / 2 - 5,
-                                    top: ROW_HEIGHT / 2 - 5,
-                                    width: 10,
-                                    height: 10,
-                                    backgroundColor: "#ef4444",
-                                  }}
-                                />
-                                <TooltipContent>
-                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip key={date}>
+                              <TooltipTrigger
+                                className="absolute rounded-full z-10 cursor-default"
+                                style={{
+                                  left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                  top: ROW_HEIGHT / 2 - 5,
+                                  width: 10,
+                                  height: 10,
+                                  backgroundColor: "#ef4444",
+                                }}
+                              />
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                              </TooltipContent>
+                            </Tooltip>
                           )
                         })}
                       </div>
@@ -1189,43 +1199,48 @@ export function TimelineView({
                               )
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                    style={{
-                                      left: `${barInfo.leftPct}%`,
-                                      width: `${barInfo.widthPct}%`,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onClick={() => setEditProject(p)}
-                                    title={`${p.name}（クリックで編集）`}
-                                  >
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.name}
-                                    </span>
-                                  </div>
+                                  <Tooltip>
+                                    <TooltipTrigger
+                                      render={<div />}
+                                      className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                      style={{
+                                        left: `${barInfo.leftPct}%`,
+                                        width: `${barInfo.widthPct}%`,
+                                        top: barTop,
+                                        height: barHeight,
+                                        backgroundColor: barColorFromProject(p),
+                                      }}
+                                      onClick={() => setEditProject(p)}
+                                    >
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.name}
+                                      </span>
+                                    </TooltipTrigger>
+                                    {p.memo && (
+                                      <TooltipContent>
+                                        <span className="whitespace-pre-line">{p.memo}</span>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
                                   {keyDateEntries.map(([date, labels]) => {
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                                     if (centerPct === null) return null
                                     return (
-                                      <TooltipProvider key={date}>
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            className="absolute rounded-full z-10 cursor-default"
-                                            style={{
-                                              left: `calc(${centerPct}% - 5px)`,
-                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
-                                              width: 10,
-                                              height: 10,
-                                              backgroundColor: "#ef4444",
-                                            }}
-                                          />
-                                          <TooltipContent>
-                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                      <Tooltip key={date}>
+                                        <TooltipTrigger
+                                          className="absolute rounded-full z-10 cursor-default"
+                                          style={{
+                                            left: `calc(${centerPct}% - 5px)`,
+                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: "#ef4444",
+                                          }}
+                                        />
+                                        <TooltipContent>
+                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     )
                                   })}
                                 </div>
@@ -1390,22 +1405,29 @@ export function TimelineView({
                               const barHeight = ROW_HEIGHT - 20
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                    style={{
-                                      left: barLeft,
-                                      width: barWidth,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onClick={() => setEditProject(p)}
-                                    title={`${p.name}（クリックで編集）`}
-                                  >
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.name}
-                                    </span>
-                                  </div>
+                                  <Tooltip>
+                                    <TooltipTrigger
+                                      render={<div />}
+                                      className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                      style={{
+                                        left: barLeft,
+                                        width: barWidth,
+                                        top: barTop,
+                                        height: barHeight,
+                                        backgroundColor: barColorFromProject(p),
+                                      }}
+                                      onClick={() => setEditProject(p)}
+                                    >
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.name}
+                                      </span>
+                                    </TooltipTrigger>
+                                    {p.memo && (
+                                      <TooltipContent>
+                                        <span className="whitespace-pre-line">{p.memo}</span>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
                                   {/* 日付メモの赤丸 */}
                                   {Object.entries(
                                     p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
@@ -1417,23 +1439,21 @@ export function TimelineView({
                                     const kdIdx = dayDiff(start, parseLocalDate(date))
                                     if (kdIdx < 0 || kdIdx >= totalDays) return null
                                     return (
-                                      <TooltipProvider key={date}>
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            className="absolute rounded-full z-10 cursor-default"
-                                            style={{
-                                              left: kdIdx * dayWidth + dayWidth / 2 - 5,
-                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
-                                              width: 10,
-                                              height: 10,
-                                              backgroundColor: "#ef4444",
-                                            }}
-                                          />
-                                          <TooltipContent>
-                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                      <Tooltip key={date}>
+                                        <TooltipTrigger
+                                          className="absolute rounded-full z-10 cursor-default"
+                                          style={{
+                                            left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: "#ef4444",
+                                          }}
+                                        />
+                                        <TooltipContent>
+                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     )
                                   })}
                                 </div>
@@ -1533,6 +1553,6 @@ export function TimelineView({
           </form>
         </DialogContent>
       </Dialog>
-    </>
+    </TooltipProvider>
   )
 }
