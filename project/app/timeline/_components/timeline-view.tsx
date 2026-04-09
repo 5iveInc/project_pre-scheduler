@@ -356,6 +356,7 @@ export function TimelineView({
   }, [viewMode, activeTab])
 
   const [editProject, setEditProject] = useState<Project | null>(null)
+  const [memoTooltip, setMemoTooltip] = useState<{ memo: string; x: number; y: number } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
@@ -511,7 +512,7 @@ export function TimelineView({
   ]
 
   return (
-    <>
+    <TooltipProvider>
       {/* ── タブ ── */}
       <div className="border-b mb-4">
         <div className="flex gap-0">
@@ -720,7 +721,8 @@ export function TimelineView({
                               backgroundColor: barColor,
                             }}
                             onClick={() => setEditProject(p)}
-                            title={`${p.name}（クリックで編集）`}
+                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
                               {p.name}
@@ -731,23 +733,21 @@ export function TimelineView({
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                           if (centerPct === null) return null
                           return (
-                            <TooltipProvider key={date}>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  className="absolute rounded-full z-10 cursor-default"
-                                  style={{
-                                    left: `calc(${centerPct}% - 5px)`,
-                                    top: ROW_HEIGHT / 2 - 5,
-                                    width: 10,
-                                    height: 10,
-                                    backgroundColor: "#ef4444",
-                                  }}
-                                />
-                                <TooltipContent>
-                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip key={date}>
+                              <TooltipTrigger
+                                className="absolute rounded-full z-10 cursor-default"
+                                style={{
+                                  left: `calc(${centerPct}% - 5px)`,
+                                  top: ROW_HEIGHT / 2 - 5,
+                                  width: 10,
+                                  height: 10,
+                                  backgroundColor: "#ef4444",
+                                }}
+                              />
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                              </TooltipContent>
+                            </Tooltip>
                           )
                         })}
                       </div>
@@ -933,7 +933,8 @@ export function TimelineView({
                               backgroundColor: barColor,
                             }}
                             onClick={() => setEditProject(p)}
-                            title={`${p.name}（クリックで編集）`}
+                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
                               {p.name}
@@ -952,23 +953,21 @@ export function TimelineView({
                           const kdIdx = dayDiff(start, parseLocalDate(date))
                           if (kdIdx < 0 || kdIdx >= totalDays) return null
                           return (
-                            <TooltipProvider key={date}>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  className="absolute rounded-full z-10 cursor-default"
-                                  style={{
-                                    left: kdIdx * dayWidth + dayWidth / 2 - 5,
-                                    top: ROW_HEIGHT / 2 - 5,
-                                    width: 10,
-                                    height: 10,
-                                    backgroundColor: "#ef4444",
-                                  }}
-                                />
-                                <TooltipContent>
-                                  <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip key={date}>
+                              <TooltipTrigger
+                                className="absolute rounded-full z-10 cursor-default"
+                                style={{
+                                  left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                  top: ROW_HEIGHT / 2 - 5,
+                                  width: 10,
+                                  height: 10,
+                                  backgroundColor: "#ef4444",
+                                }}
+                              />
+                              <TooltipContent>
+                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                              </TooltipContent>
+                            </Tooltip>
                           )
                         })}
                       </div>
@@ -1199,7 +1198,8 @@ export function TimelineView({
                                       backgroundColor: barColorFromProject(p),
                                     }}
                                     onClick={() => setEditProject(p)}
-                                    title={`${p.name}（クリックで編集）`}
+                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
                                       {p.name}
@@ -1209,23 +1209,21 @@ export function TimelineView({
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                                     if (centerPct === null) return null
                                     return (
-                                      <TooltipProvider key={date}>
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            className="absolute rounded-full z-10 cursor-default"
-                                            style={{
-                                              left: `calc(${centerPct}% - 5px)`,
-                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
-                                              width: 10,
-                                              height: 10,
-                                              backgroundColor: "#ef4444",
-                                            }}
-                                          />
-                                          <TooltipContent>
-                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                      <Tooltip key={date}>
+                                        <TooltipTrigger
+                                          className="absolute rounded-full z-10 cursor-default"
+                                          style={{
+                                            left: `calc(${centerPct}% - 5px)`,
+                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: "#ef4444",
+                                          }}
+                                        />
+                                        <TooltipContent>
+                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     )
                                   })}
                                 </div>
@@ -1400,7 +1398,8 @@ export function TimelineView({
                                       backgroundColor: barColorFromProject(p),
                                     }}
                                     onClick={() => setEditProject(p)}
-                                    title={`${p.name}（クリックで編集）`}
+                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
                                       {p.name}
@@ -1417,23 +1416,21 @@ export function TimelineView({
                                     const kdIdx = dayDiff(start, parseLocalDate(date))
                                     if (kdIdx < 0 || kdIdx >= totalDays) return null
                                     return (
-                                      <TooltipProvider key={date}>
-                                        <Tooltip>
-                                          <TooltipTrigger
-                                            className="absolute rounded-full z-10 cursor-default"
-                                            style={{
-                                              left: kdIdx * dayWidth + dayWidth / 2 - 5,
-                                              top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
-                                              width: 10,
-                                              height: 10,
-                                              backgroundColor: "#ef4444",
-                                            }}
-                                          />
-                                          <TooltipContent>
-                                            <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
+                                      <Tooltip key={date}>
+                                        <TooltipTrigger
+                                          className="absolute rounded-full z-10 cursor-default"
+                                          style={{
+                                            left: kdIdx * dayWidth + dayWidth / 2 - 5,
+                                            top: lane * ROW_HEIGHT + ROW_HEIGHT / 2 - 5,
+                                            width: 10,
+                                            height: 10,
+                                            backgroundColor: "#ef4444",
+                                          }}
+                                        />
+                                        <TooltipContent>
+                                          <span className="whitespace-pre-line">{labels.join("\n")}</span>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     )
                                   })}
                                 </div>
@@ -1533,6 +1530,15 @@ export function TimelineView({
           </form>
         </DialogContent>
       </Dialog>
-    </>
+      {/* メモのカーソル追従ツールチップ */}
+      {memoTooltip && (
+        <div
+          className="fixed z-50 pointer-events-none rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md max-w-xs"
+          style={{ left: memoTooltip.x + 12, top: memoTooltip.y + 16 }}
+        >
+          <span className="whitespace-pre-line">{memoTooltip.memo}</span>
+        </div>
+      )}
+    </TooltipProvider>
   )
 }
