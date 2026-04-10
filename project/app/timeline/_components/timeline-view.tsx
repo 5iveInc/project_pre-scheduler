@@ -61,9 +61,9 @@ function barColorFromParentVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_PARENT_COLORS[volume] ?? VOLUME_PARENT_COLORS[3]) : VOLUME_PARENT_COLORS[3]
 }
 
-function barColorFromProject(p: Project): string {
+function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
-  if (p.has_children) return barColorFromParentVolume(p.volume)
+  if (!ignoreChildren && p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
 }
 
@@ -449,6 +449,12 @@ export function TimelineView({
     [sortedProjects, showOrderedOnly],
   )
 
+  // 案件ビュー専用: 子タスクを除外
+  const projectTabProjects = useMemo(
+    () => visibleProjects.filter((p) => p.parent_id === null),
+    [visibleProjects],
+  )
+
   function handleSortOption(key: SortKey) {
     if (sortKey === key) {
       setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
@@ -662,12 +668,12 @@ export function TimelineView({
               >
                 案件名
               </div>
-              {visibleProjects.length === 0 ? (
+              {projectTabProjects.length === 0 ? (
                 <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
                   案件なし
                 </div>
               ) : (
-                visibleProjects.map((p) => (
+                projectTabProjects.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -699,14 +705,14 @@ export function TimelineView({
                     </div>
                   ))}
                 </div>
-                {visibleProjects.length === 0 ? (
+                {projectTabProjects.length === 0 ? (
                   <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  visibleProjects.map((p) => {
+                  projectTabProjects.map((p) => {
                     const barInfo = calcMonthViewBar(p, monthViewMonths)
-                    const barColor = barColorFromProject(p)
+                    const barColor = barColorFromProject(p, true)
                     const keyDateEntries = Object.entries(
                       p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
@@ -801,7 +807,7 @@ export function TimelineView({
                   案件なし
                 </div>
               ) : (
-                visibleProjects.map((p) => (
+                projectTabProjects.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -880,7 +886,7 @@ export function TimelineView({
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  visibleProjects.map((p) => {
+                  projectTabProjects.map((p) => {
                     let barLeft: number | null = null
                     let barWidth: number | null = null
 
@@ -897,7 +903,7 @@ export function TimelineView({
                       }
                     }
 
-                    const barColor = barColorFromProject(p)
+                    const barColor = barColorFromProject(p, true)
 
                     return (
                       <div
