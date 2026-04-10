@@ -48,14 +48,18 @@ export default async function Home() {
                         <p className="text-sm text-muted-foreground">なし</p>
                       ) : (
                         <ul className="flex flex-col gap-2">
-                          {assigned.map((project) => (
-                            <li key={project.id} className="text-sm leading-snug">
-                              {project.volume !== null && (
-                                <span className="mr-1 text-muted-foreground">【Lv.{project.volume}】</span>
-                              )}
-                              <span className="font-bold">{project.name}</span>
-                            </li>
-                          ))}
+                          {assigned.map((project) => {
+                            const parent = project.parent_id !== null ? projects.find((p) => p.id === project.parent_id) : null
+                            const displayName = parent ? `${parent.name} → ${project.name}` : project.name
+                            return (
+                              <li key={project.id} className="text-sm leading-snug">
+                                {project.volume !== null && (
+                                  <span className="mr-1 text-muted-foreground">【Lv.{project.volume}】</span>
+                                )}
+                                <span className="font-bold">{displayName}</span>
+                              </li>
+                            )
+                          })}
                         </ul>
                       )}
                     </div>
@@ -65,9 +69,12 @@ export default async function Home() {
                         <p className="text-sm text-muted-foreground">なし</p>
                       ) : (
                         <ul className="flex flex-col gap-3">
-                          {nextProjects.map((project) => (
+                          {nextProjects.map((project) => {
+                            const parent = project.parent_id !== null ? projects.find((p) => p.id === project.parent_id) : null
+                            const displayName = parent ? `${parent.name} → ${project.name}` : project.name
+                            return (
                             <li key={project.id} className="text-sm leading-snug text-muted-foreground">
-                              <span className="font-bold text-foreground block mb-1">{project.name}</span>
+                              <span className="font-bold text-foreground block mb-1">{displayName}</span>
                               <div className="block pl-[1.5em] relative before:content-['→'] before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2">
                                 <span className="mr-3">開始日：{project.start_date!.slice(5, 7).replace(/^0/, "")}/{project.start_date!.slice(8, 10).replace(/^0/, "")}</span>
                                 {project.volume !== null && (
@@ -75,7 +82,8 @@ export default async function Home() {
                                 )}
                               </div>
                             </li>
-                          ))}
+                            )
+                          })}
                         </ul>
                       )}
                     </div>
