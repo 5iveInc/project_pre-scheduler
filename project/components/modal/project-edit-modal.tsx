@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { ArchiveIcon, ArchiveRestoreIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { ArchiveIcon, ArchiveRestoreIcon, GitForkIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -352,6 +352,13 @@ export function ProjectEditModal({
                   </Button>
                 </div>
                 <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isPending}
+                  >
+                    <GitForkIcon className="mr-1" />子タスクを作成
+                  </Button>
                   <Button type="submit" disabled={isPending}>
                     保存する
                   </Button>

@@ -1516,7 +1516,7 @@ export function TimelineView({
 
       {/* ── 案件追加モーダル ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-300">
+        <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
           <DialogHeader>
             <DialogTitle>案件を追加</DialogTitle>
           </DialogHeader>
