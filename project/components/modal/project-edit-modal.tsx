@@ -17,6 +17,7 @@ import {
   archiveProjectsAction,
   unarchiveProjectsAction,
   addChildProjectAction,
+  deleteProjectsAction,
 } from "@/app/project/actions"
 import type { Project, User } from "@/database/db"
 
@@ -62,6 +63,7 @@ export function ProjectFormFields({
   parentDateRange,
   childTasks,
   onChildTaskClick,
+  onChildTaskDelete,
 }: {
   users: User[]
   defaultValues?: {
@@ -79,6 +81,7 @@ export function ProjectFormFields({
   parentDateRange?: { startDate: string | null; endDate: string | null }
   childTasks?: Project[]
   onChildTaskClick?: (task: Project) => void
+  onChildTaskDelete?: (task: Project) => void
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
   const [status, setStatus] = useState<"相談中" | "受注済">(hideStatus ? "受注済" : (defaultValues?.status ?? "相談中"))
@@ -290,20 +293,28 @@ export function ProjectFormFields({
             <Label>子タスク一覧</Label>
             <div className="flex flex-col gap-2 rounded-lg border border-input p-3 h-[500px] overflow-auto">
               {childTasks.map((task) => (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => onChildTaskClick?.(task)}
-                  className="text-left rounded-md px-2 py-1.5 hover:bg-muted transition-colors"
-                >
-                  <p className="text-sm font-medium leading-snug">{task.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {task.start_date ?? "—"} 〜 {task.end_date ?? "—"}
-                  </p>
-                  {task.assignee_names.length > 0 && (
-                    <p className="text-xs text-muted-foreground">{task.assignee_names.join(", ")}</p>
-                  )}
-                </button>
+                <div key={task.id} className="flex items-start gap-1 rounded-md hover:bg-muted transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => onChildTaskClick?.(task)}
+                    className="flex-1 text-left px-2 py-1.5 min-w-0"
+                  >
+                    <p className="text-sm font-medium leading-snug">{task.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {task.start_date ?? "—"} 〜 {task.end_date ?? "—"}
+                    </p>
+                    {task.assignee_names.length > 0 && (
+                      <p className="text-xs text-muted-foreground">{task.assignee_names.join(", ")}</p>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChildTaskDelete?.(task)}
+                    className="shrink-0 p-1.5 mt-0.5 text-muted-foreground hover:text-destructive transition-colors rounded"
+                  >
+                    <Trash2Icon className="size-3.5" />
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -409,8 +420,17 @@ export function ProjectEditModal({
   const [isPending, startTransition] = useTransition()
   const [childModalOpen, setChildModalOpen] = useState(false)
   const [editingChildTask, setEditingChildTask] = useState<Project | null>(null)
+  const [confirmDeleteTask, setConfirmDeleteTask] = useState<Project | null>(null)
 
   const childTasks = project ? allProjects.filter((p) => p.parent_id === project.id) : []
+
+  function handleDeleteChildTask() {
+    if (!confirmDeleteTask) return
+    startTransition(async () => {
+      await deleteProjectsAction([confirmDeleteTask.id])
+      setConfirmDeleteTask(null)
+    })
+  }
 
   function handleSave(formData: FormData) {
     if (!project) return
@@ -459,6 +479,7 @@ export function ProjectEditModal({
               users={users}
               childTasks={childTasks}
               onChildTaskClick={(task) => setEditingChildTask(task)}
+              onChildTaskDelete={(task) => setConfirmDeleteTask(task)}
               defaultValues={{
                 name: project.name,
                 status: project.status,
@@ -523,6 +544,24 @@ export function ProjectEditModal({
         onOpenChange={(open) => { if (!open) setEditingChildTask(null) }}
       />
     )}
+    <Dialog open={confirmDeleteTask !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteTask(null) }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>子タスクを削除</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          「{confirmDeleteTask?.name}」を削除しますか？この操作は取り消せません。
+        </p>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setConfirmDeleteTask(null)} disabled={isPending}>
+            キャンセル
+          </Button>
+          <Button variant="destructive" onClick={handleDeleteChildTask} disabled={isPending}>
+            削除する
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>
   )
 }
