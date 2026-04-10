@@ -744,7 +744,7 @@ export function TimelineView({
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `[${projects.find((pp) => pp.id === p.parent_id)!.name}] `}{p.name}
+                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                             </span>
                           </div>
                         )}
@@ -1221,7 +1221,7 @@ export function TimelineView({
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `[${projects.find((pp) => pp.id === p.parent_id)!.name}] `}{p.name}
+                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
                                   </div>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -1421,7 +1421,7 @@ export function TimelineView({
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `[${projects.find((pp) => pp.id === p.parent_id)!.name}] `}{p.name}
+                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
                                   </div>
                                   {/* 日付メモの赤丸 */}
