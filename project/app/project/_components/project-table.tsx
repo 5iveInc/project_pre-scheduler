@@ -50,11 +50,13 @@ function buildAssigneeLabel(project: Project): string | null {
 function ProjectRow({
   project,
   users,
+  allProjects,
   checked,
   onCheckedChange,
 }: {
   project: Project
   users: User[]
+  allProjects: Project[]
   checked: boolean
   onCheckedChange: () => void
 }) {
@@ -86,6 +88,7 @@ function ProjectRow({
       <ProjectEditModal
         project={project}
         users={users}
+        allProjects={allProjects}
         open={open}
         onOpenChange={setOpen}
       />
@@ -273,6 +276,7 @@ export function ProjectTable({
                   key={project.id}
                   project={project}
                   users={users}
+                  allProjects={projects}
                   checked={checkedIds.has(project.id)}
                   onCheckedChange={() => toggleCheck(project.id)}
                 />
