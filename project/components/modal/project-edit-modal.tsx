@@ -16,6 +16,7 @@ import {
   updateProjectAction,
   archiveProjectsAction,
   unarchiveProjectsAction,
+  addChildProjectAction,
 } from "@/app/project/actions"
 import type { Project, User } from "@/database/db"
 
@@ -57,6 +58,8 @@ function UserCheckboxGroup({
 export function ProjectFormFields({
   users,
   defaultValues,
+  hideStatus = false,
+  parentDateRange,
 }: {
   users: User[]
   defaultValues?: {
@@ -70,9 +73,11 @@ export function ProjectFormFields({
     volume?: number | null
     keyDates?: { date: string; label: string }[]
   }
+  hideStatus?: boolean
+  parentDateRange?: { startDate: string | null; endDate: string | null }
 }) {
   const [name, setName] = useState(defaultValues?.name ?? "")
-  const [status, setStatus] = useState<"相談中" | "受注済">(defaultValues?.status ?? "相談中")
+  const [status, setStatus] = useState<"相談中" | "受注済">(hideStatus ? "受注済" : (defaultValues?.status ?? "相談中"))
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
@@ -111,27 +116,31 @@ export function ProjectFormFields({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label>ステータス</Label>
-        <input type="hidden" name="status" value={status} />
-        <div className="flex rounded-md border border-input overflow-hidden w-fit">
-          {(["相談中", "受注済"] as const).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setStatus(s)}
-              className={[
-                "px-4 py-1.5 text-sm font-medium transition-colors",
-                status === s
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-background text-muted-foreground hover:bg-muted",
-              ].join(" ")}
-            >
-              {s}
-            </button>
-          ))}
+      {hideStatus ? (
+        <input type="hidden" name="status" value="受注済" />
+      ) : (
+        <div className="space-y-1.5">
+          <Label>ステータス</Label>
+          <input type="hidden" name="status" value={status} />
+          <div className="flex rounded-md border border-input overflow-hidden w-fit">
+            {(["相談中", "受注済"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={[
+                  "px-4 py-1.5 text-sm font-medium transition-colors",
+                  status === s
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted",
+                ].join(" ")}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex gap-1">
         <div className="space-y-1.5 w-full">
@@ -153,6 +162,15 @@ export function ProjectFormFields({
           />
         </div>
       </div>
+
+      {parentDateRange && (
+        <div className="space-y-1.5">
+          <Label>親案件の期間</Label>
+          <p className="text-sm text-muted-foreground">
+            {parentDateRange.startDate ?? "—"} 〜 {parentDateRange.endDate ?? "—"}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
@@ -264,6 +282,81 @@ export function ProjectFormFields({
   )
 }
 
+// ── 子タスクモーダル ────────────────────────────────────────
+
+export function ChildTaskModal({
+  parentProject,
+  childTask = null,
+  users,
+  open,
+  onOpenChange,
+}: {
+  parentProject: Project
+  childTask?: Project | null
+  users: User[]
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const [isPending, startTransition] = useTransition()
+
+  function handleSave(formData: FormData) {
+    startTransition(async () => {
+      if (childTask) {
+        const name = (formData.get("name") as string).trim()
+        const assigneeIds = formData.getAll("assigneeId").map(Number).filter(Boolean)
+        const supportIds = formData.getAll("supportId").map(Number).filter(Boolean)
+        const startDate = (formData.get("startDate") as string) || null
+        const endDate = (formData.get("endDate") as string) || null
+        const memo = (formData.get("memo") as string) || null
+        const volume = Number(formData.get("volume")) || null
+        const rawStatus = formData.get("status") as string | null
+        const status = rawStatus === "受注済" ? "受注済" : "相談中"
+        let keyDates: { date: string; label: string }[] = []
+        try {
+          const raw = formData.get("keyDatesJson") as string | null
+          if (raw) keyDates = JSON.parse(raw)
+        } catch { /* ignore */ }
+        await updateProjectAction(childTask.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
+      } else {
+        await addChildProjectAction(parentProject.id, formData)
+      }
+      onOpenChange(false)
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
+        <DialogHeader>
+          <DialogTitle>{childTask ? "子タスクを編集" : "子タスクを追加"}</DialogTitle>
+        </DialogHeader>
+        <form key={childTask?.id ?? `child-of-${parentProject.id}`} action={handleSave} className="space-y-4">
+          <ProjectFormFields
+            users={users}
+            hideStatus
+            parentDateRange={{ startDate: parentProject.start_date, endDate: parentProject.end_date }}
+            defaultValues={childTask ? {
+              name: childTask.name,
+              assigneeIds: childTask.assignee_ids,
+              supportIds: childTask.support_ids,
+              startDate: childTask.start_date,
+              endDate: childTask.end_date,
+              memo: childTask.memo,
+              volume: childTask.volume,
+              keyDates: childTask.key_dates,
+            } : undefined}
+          />
+          <DialogFooter>
+            <Button type="submit" disabled={isPending}>
+              {childTask ? "保存する" : "追加する"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── 編集モーダル ────────────────────────────────────────────
 
 export function ProjectEditModal({
@@ -278,6 +371,7 @@ export function ProjectEditModal({
   onOpenChange: (open: boolean) => void
 }) {
   const [isPending, startTransition] = useTransition()
+  const [childModalOpen, setChildModalOpen] = useState(false)
 
   function handleSave(formData: FormData) {
     if (!project) return
@@ -314,6 +408,7 @@ export function ProjectEditModal({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
         <DialogHeader>
@@ -356,6 +451,7 @@ export function ProjectEditModal({
                     type="button"
                     variant="outline"
                     disabled={isPending}
+                    onClick={() => setChildModalOpen(true)}
                   >
                     <GitForkIcon className="mr-1" />子タスクを作成
                   </Button>
@@ -369,5 +465,14 @@ export function ProjectEditModal({
         )}
       </DialogContent>
     </Dialog>
+    {project && (
+      <ChildTaskModal
+        parentProject={project as Project}
+        users={users}
+        open={childModalOpen}
+        onOpenChange={setChildModalOpen}
+      />
+    )}
+  </>
   )
 }

@@ -109,8 +109,8 @@ export function ProjectTable({
   const [addOpen, setAddOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const activeProjects = projects.filter((p) => !p.archived)
-  const archivedProjects = projects.filter((p) => p.archived)
+  const activeProjects = projects.filter((p) => !p.archived && p.parent_id === null)
+  const archivedProjects = projects.filter((p) => p.archived && p.parent_id === null)
   const visibleProjects = tab === "active" ? activeProjects : archivedProjects
 
   function toggleCheck(id: number) {

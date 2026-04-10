@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon } from "lucide-react"
-import { ProjectEditModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
+import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
 
@@ -37,6 +37,14 @@ const MONTH_HEADER_HEIGHT = 30
 const DAY_HEADER_HEIGHT = 44
 const LEFT_COL_WIDTH = 200
 
+const VOLUME_PARENT_COLORS: Record<number, string> = {
+  1: "#bbf7d0", // green-200
+  2: "#86efac", // green-300
+  3: "#4ade80", // green-400
+  4: "#22c55e", // green-500
+  5: "#16a34a", // green-600
+}
+
 const VOLUME_COLORS: Record<number, string> = {
   1: "#bfdbfe", // blue-200
   2: "#93c5fd", // blue-300
@@ -49,8 +57,13 @@ function barColorFromVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_COLORS[volume] ?? VOLUME_COLORS[3]) : VOLUME_COLORS[3]
 }
 
+function barColorFromParentVolume(volume: number | null): string {
+  return volume !== null ? (VOLUME_PARENT_COLORS[volume] ?? VOLUME_PARENT_COLORS[3]) : VOLUME_PARENT_COLORS[3]
+}
+
 function barColorFromProject(p: Project): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
+  if (p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
 }
 
@@ -1457,12 +1470,22 @@ export function TimelineView({
       })()}
 
       {/* 編集モーダル */}
-      <ProjectEditModal
-        project={editProject}
-        users={users}
-        open={editProject !== null}
-        onOpenChange={(open) => !open && setEditProject(null)}
-      />
+      {editProject !== null && editProject.parent_id !== null ? (
+        <ChildTaskModal
+          parentProject={projects.find((p) => p.id === editProject.parent_id)!}
+          childTask={editProject}
+          users={users}
+          open={true}
+          onOpenChange={(open) => !open && setEditProject(null)}
+        />
+      ) : (
+        <ProjectEditModal
+          project={editProject}
+          users={users}
+          open={editProject !== null}
+          onOpenChange={(open) => !open && setEditProject(null)}
+        />
+      )}
 
       {/* ── 設定モーダル ── */}
       <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) setSettingsOpen(false) }}>

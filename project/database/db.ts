@@ -51,6 +51,13 @@ async function initSchema() {
     // 既にカラムが存在する場合は無視
   }
 
+  // parent_id カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
+  try {
+    await client.execute("ALTER TABLE projects ADD COLUMN parent_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+  } catch {
+    // 既にカラムが存在する場合は無視
+  }
+
   const { rows } = await client.execute("SELECT COUNT(*) as count FROM users")
   const count = rows[0].count as number
   if (count === 0) {
@@ -135,6 +142,8 @@ export type Project = {
   key_dates: KeyDate[]
   created_at: string
   archived: boolean
+  parent_id: number | null
+  has_children: boolean
 }
 
 type RawProject = {
@@ -152,6 +161,8 @@ type RawProject = {
   key_dates_str: string | null
   created_at: string
   archived: number
+  parent_id: number | null
+  has_children: number
 }
 
 export async function getProjects(): Promise<Project[]> {
@@ -159,6 +170,8 @@ export async function getProjects(): Promise<Project[]> {
   const { rows } = await db.execute(`
     SELECT
       p.id, p.name, p.status, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
+      p.parent_id,
+      (SELECT COUNT(*) FROM projects c WHERE c.parent_id = p.id) AS has_children,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
       (SELECT GROUP_CONCAT(u.name, '|||')
@@ -195,6 +208,8 @@ export async function getProjects(): Promise<Project[]> {
       : [],
     created_at: row.created_at,
     archived: row.archived === 1,
+    parent_id: row.parent_id,
+    has_children: row.has_children > 0,
   }))
 }
 
@@ -242,6 +257,29 @@ export async function addProject(
   await replaceKeyDates(db, newId, keyDates)
 }
 
+export async function addChildProject(
+  parentId: number,
+  name: string,
+  assigneeIds: number[],
+  supportIds: number[],
+  startDate: string | null,
+  endDate: string | null,
+  memo: string | null,
+  volume: number | null,
+  keyDates: KeyDate[] = [],
+  status: ProjectStatus = "相談中",
+): Promise<void> {
+  const db = await getClient()
+  const result = await db.execute({
+    sql: "INSERT INTO projects (name, status, start_date, end_date, memo, volume, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [name, status, startDate, endDate, memo, volume, parentId],
+  })
+  const newId = result.lastInsertRowid!
+  await insertJunction(db, "project_assignees", newId, assigneeIds)
+  await insertJunction(db, "project_supports", newId, supportIds)
+  await replaceKeyDates(db, newId, keyDates)
+}
+
 export async function updateProject(
   id: number,
   name: string,
@@ -270,6 +308,8 @@ export async function deleteProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
+  // 子タスクも削除（外部キー制約が無効のため明示的に削除）
+  await db.execute({ sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids })
   await db.execute({ sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids })
 }
 
@@ -278,6 +318,8 @@ export async function archiveProjects(ids: number[]): Promise<void> {
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
   await db.execute({ sql: `UPDATE projects SET archived=1 WHERE id IN (${placeholders})`, args: ids })
+  // 子タスクも同時にアーカイブ
+  await db.execute({ sql: `UPDATE projects SET archived=1 WHERE parent_id IN (${placeholders})`, args: ids })
 }
 
 export async function unarchiveProjects(ids: number[]): Promise<void> {
@@ -285,6 +327,8 @@ export async function unarchiveProjects(ids: number[]): Promise<void> {
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
   await db.execute({ sql: `UPDATE projects SET archived=0 WHERE id IN (${placeholders})`, args: ids })
+  // 子タスクも同時に復帰
+  await db.execute({ sql: `UPDATE projects SET archived=0 WHERE parent_id IN (${placeholders})`, args: ids })
 }
 
 // ── Custom Holidays ────────────────────────────────────────
