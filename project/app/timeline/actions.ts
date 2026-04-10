@@ -23,8 +23,10 @@ export async function addProjectTimelineAction(formData: FormData) {
   const memo = (formData.get("memo") as string) || null
   const volume = Number(formData.get("volume")) || null
   const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
+  const rawStatus = formData.get("status") as string | null
+  const status = rawStatus === "受注済" ? "受注済" : "相談中"
   if (!name) throw new Error("案件名は必須です")
-  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates)
+  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
   revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")

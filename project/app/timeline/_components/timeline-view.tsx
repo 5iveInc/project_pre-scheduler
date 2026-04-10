@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon } from "lucide-react"
-import { ProjectEditModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
+import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
 
@@ -37,6 +37,14 @@ const MONTH_HEADER_HEIGHT = 30
 const DAY_HEADER_HEIGHT = 44
 const LEFT_COL_WIDTH = 200
 
+const VOLUME_PARENT_COLORS: Record<number, string> = {
+  1: "#bbf7d0", // green-200
+  2: "#86efac", // green-300
+  3: "#4ade80", // green-400
+  4: "#22c55e", // green-500
+  5: "#16a34a", // green-600
+}
+
 const VOLUME_COLORS: Record<number, string> = {
   1: "#bfdbfe", // blue-200
   2: "#93c5fd", // blue-300
@@ -49,8 +57,13 @@ function barColorFromVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_COLORS[volume] ?? VOLUME_COLORS[3]) : VOLUME_COLORS[3]
 }
 
-function barColorFromProject(p: Project): string {
+function barColorFromParentVolume(volume: number | null): string {
+  return volume !== null ? (VOLUME_PARENT_COLORS[volume] ?? VOLUME_PARENT_COLORS[3]) : VOLUME_PARENT_COLORS[3]
+}
+
+function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
+  if (!ignoreChildren && p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
 }
 
@@ -436,6 +449,12 @@ export function TimelineView({
     [sortedProjects, showOrderedOnly],
   )
 
+  // 案件ビュー専用: 子タスクを除外
+  const projectTabProjects = useMemo(
+    () => visibleProjects.filter((p) => p.parent_id === null),
+    [visibleProjects],
+  )
+
   function handleSortOption(key: SortKey) {
     if (sortKey === key) {
       setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
@@ -649,12 +668,12 @@ export function TimelineView({
               >
                 案件名
               </div>
-              {visibleProjects.length === 0 ? (
+              {projectTabProjects.length === 0 ? (
                 <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
                   案件なし
                 </div>
               ) : (
-                visibleProjects.map((p) => (
+                projectTabProjects.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -686,14 +705,14 @@ export function TimelineView({
                     </div>
                   ))}
                 </div>
-                {visibleProjects.length === 0 ? (
+                {projectTabProjects.length === 0 ? (
                   <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  visibleProjects.map((p) => {
+                  projectTabProjects.map((p) => {
                     const barInfo = calcMonthViewBar(p, monthViewMonths)
-                    const barColor = barColorFromProject(p)
+                    const barColor = barColorFromProject(p, true)
                     const keyDateEntries = Object.entries(
                       p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
@@ -725,7 +744,7 @@ export function TimelineView({
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.name}
+                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                             </span>
                           </div>
                         )}
@@ -788,7 +807,7 @@ export function TimelineView({
                   案件なし
                 </div>
               ) : (
-                visibleProjects.map((p) => (
+                projectTabProjects.map((p) => (
                   <button
                     key={p.id}
                     type="button"
@@ -867,7 +886,7 @@ export function TimelineView({
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  visibleProjects.map((p) => {
+                  projectTabProjects.map((p) => {
                     let barLeft: number | null = null
                     let barWidth: number | null = null
 
@@ -884,7 +903,7 @@ export function TimelineView({
                       }
                     }
 
-                    const barColor = barColorFromProject(p)
+                    const barColor = barColorFromProject(p, true)
 
                     return (
                       <div
@@ -937,7 +956,7 @@ export function TimelineView({
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.name}
+                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                             </span>
                           </div>
                         )}
@@ -1202,7 +1221,7 @@ export function TimelineView({
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.name}
+                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
                                   </div>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -1402,7 +1421,7 @@ export function TimelineView({
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.name}
+                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
                                   </div>
                                   {/* 日付メモの赤丸 */}
@@ -1457,12 +1476,23 @@ export function TimelineView({
       })()}
 
       {/* 編集モーダル */}
-      <ProjectEditModal
-        project={editProject}
-        users={users}
-        open={editProject !== null}
-        onOpenChange={(open) => !open && setEditProject(null)}
-      />
+      {editProject !== null && editProject.parent_id !== null ? (
+        <ChildTaskModal
+          parentProject={projects.find((p) => p.id === editProject.parent_id)!}
+          childTask={editProject}
+          users={users}
+          open={true}
+          onOpenChange={(open) => !open && setEditProject(null)}
+        />
+      ) : (
+        <ProjectEditModal
+          project={editProject}
+          users={users}
+          allProjects={projects}
+          open={editProject !== null}
+          onOpenChange={(open) => !open && setEditProject(null)}
+        />
+      )}
 
       {/* ── 設定モーダル ── */}
       <Dialog open={settingsOpen} onOpenChange={(open) => { if (!open) setSettingsOpen(false) }}>
@@ -1516,7 +1546,7 @@ export function TimelineView({
 
       {/* ── 案件追加モーダル ── */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-300">
+        <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
           <DialogHeader>
             <DialogTitle>案件を追加</DialogTitle>
           </DialogHeader>

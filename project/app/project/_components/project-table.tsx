@@ -50,11 +50,13 @@ function buildAssigneeLabel(project: Project): string | null {
 function ProjectRow({
   project,
   users,
+  allProjects,
   checked,
   onCheckedChange,
 }: {
   project: Project
   users: User[]
+  allProjects: Project[]
   checked: boolean
   onCheckedChange: () => void
 }) {
@@ -86,6 +88,7 @@ function ProjectRow({
       <ProjectEditModal
         project={project}
         users={users}
+        allProjects={allProjects}
         open={open}
         onOpenChange={setOpen}
       />
@@ -109,8 +112,8 @@ export function ProjectTable({
   const [addOpen, setAddOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
 
-  const activeProjects = projects.filter((p) => !p.archived)
-  const archivedProjects = projects.filter((p) => p.archived)
+  const activeProjects = projects.filter((p) => !p.archived && p.parent_id === null)
+  const archivedProjects = projects.filter((p) => p.archived && p.parent_id === null)
   const visibleProjects = tab === "active" ? activeProjects : archivedProjects
 
   function toggleCheck(id: number) {
@@ -273,6 +276,7 @@ export function ProjectTable({
                   key={project.id}
                   project={project}
                   users={users}
+                  allProjects={projects}
                   checked={checkedIds.has(project.id)}
                   onCheckedChange={() => toggleCheck(project.id)}
                 />
@@ -284,7 +288,7 @@ export function ProjectTable({
 
       {/* 案件追加モーダル */}
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-300">
+        <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
           <DialogHeader>
             <DialogTitle>案件を追加</DialogTitle>
           </DialogHeader>
