@@ -315,7 +315,7 @@ export function ProjectEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-300">
+      <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle>案件を編集</DialogTitle>
         </DialogHeader>
@@ -336,21 +336,27 @@ export function ProjectEditModal({
               }}
             />
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleArchiveToggle}
-                disabled={isPending}
-              >
-                {project.archived ? (
-                  <><ArchiveRestoreIcon className="mr-1" />作業中へ戻す</>
-                ) : (
-                  <><ArchiveIcon className="mr-1" />アーカイブ</>
-                )}
-              </Button>
-              <Button type="submit" disabled={isPending}>
-                保存する
-              </Button>
+              <div className="flex gap-2 justify-between w-full">
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleArchiveToggle}
+                    disabled={isPending}
+                  >
+                    {project.archived ? (
+                      <><ArchiveRestoreIcon className="mr-1" />作業中へ戻す</>
+                    ) : (
+                      <><ArchiveIcon className="mr-1" />アーカイブ</>
+                    )}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={isPending}>
+                    保存する
+                  </Button>
+                </div>
+              </div>
             </DialogFooter>
           </form>
         )}
