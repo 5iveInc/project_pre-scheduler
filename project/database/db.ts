@@ -304,6 +304,18 @@ export async function updateProject(
   await replaceKeyDates(db, id, keyDates)
 }
 
+export async function updateProjectDates(
+  id: number,
+  startDate: string | null,
+  endDate: string | null,
+): Promise<void> {
+  const db = await getClient()
+  await db.execute({
+    sql: "UPDATE projects SET start_date=?, end_date=? WHERE id=?",
+    args: [startDate, endDate, id],
+  })
+}
+
 export async function deleteProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
