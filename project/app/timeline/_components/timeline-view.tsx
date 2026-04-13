@@ -2,7 +2,8 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
-import { addProjectTimelineAction, saveCustomHolidaysAction } from "@/app/timeline/actions"
+import { addProjectTimelineAction, saveCustomHolidaysAction, updateProjectDatesAction } from "@/app/timeline/actions"
+import { useBarDrag } from "./use-bar-drag"
 import {
   Dialog,
   DialogContent,
@@ -375,6 +376,12 @@ export function TimelineView({
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
   const [isPending, startTransition] = useTransition()
 
+  const barDrag = useBarDrag(dayWidth, start, totalDays, (id, newStart, newEnd) => {
+    startTransition(async () => {
+      await updateProjectDatesAction(id, newStart, newEnd)
+    })
+  })
+
   function handleAdd(formData: FormData) {
     startTransition(async () => {
       await addProjectTimelineAction(formData)
@@ -731,7 +738,7 @@ export function TimelineView({
                         ))}
                         {barInfo && (
                           <div
-                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
                             style={{
                               left: `${barInfo.leftPct}%`,
                               width: `${barInfo.widthPct}%`,
@@ -743,9 +750,11 @@ export function TimelineView({
                             onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
+                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
                               {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                             </span>
+                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         )}
                         {keyDateEntries.map(([date, labels]) => {
@@ -887,12 +896,16 @@ export function TimelineView({
                   </div>
                 ) : (
                   projectTabProjects.map((p) => {
+                    const override = barDrag.getBarOverride(p.id)
+                    const effStart = override?.start_date ?? p.start_date
+                    const effEnd = override?.end_date ?? p.end_date
+
                     let barLeft: number | null = null
                     let barWidth: number | null = null
 
-                    if (p.start_date && p.end_date) {
-                      const sd = parseLocalDate(p.start_date)
-                      const ed = parseLocalDate(p.end_date)
+                    if (effStart && effEnd) {
+                      const sd = parseLocalDate(effStart)
+                      const ed = parseLocalDate(effEnd)
                       const startIdx = dayDiff(start, sd)
                       const endIdx = dayDiff(start, ed)
                       const clampedStart = Math.max(0, startIdx)
@@ -904,6 +917,7 @@ export function TimelineView({
                     }
 
                     const barColor = barColorFromProject(p, true)
+                    const isThisDragging = barDrag.draggingId === p.id
 
                     return (
                       <div
@@ -943,7 +957,7 @@ export function TimelineView({
                         {/* バー */}
                         {barLeft !== null && barWidth !== null && (
                           <div
-                            className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                            className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                             style={{
                               left: barLeft,
                               width: barWidth,
@@ -951,13 +965,30 @@ export function TimelineView({
                               bottom: 10,
                               backgroundColor: barColor,
                             }}
-                            onClick={() => setEditProject(p)}
+                            onMouseDown={(e) => {
+                              if (!scrollRef.current) return
+                              barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p))
+                            }}
                             onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
+                            <div
+                              className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                              onMouseDown={(e) => {
+                                if (!scrollRef.current) return
+                                barDrag.startDrag("resize-start", p, e, scrollRef.current)
+                              }}
+                            />
                             <span className="px-2 text-xs text-white font-medium truncate leading-none">
                               {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                             </span>
+                            <div
+                              className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                              onMouseDown={(e) => {
+                                if (!scrollRef.current) return
+                                barDrag.startDrag("resize-end", p, e, scrollRef.current)
+                              }}
+                            />
                           </div>
                         )}
 
@@ -1208,7 +1239,7 @@ export function TimelineView({
                               return (
                                 <div key={p.id}>
                                   <div
-                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
                                     style={{
                                       left: `${barInfo.leftPct}%`,
                                       width: `${barInfo.widthPct}%`,
@@ -1220,9 +1251,11 @@ export function TimelineView({
                                     onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
+                                    <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
                                       {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
+                                    <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </div>
                                   {keyDateEntries.map(([date, labels]) => {
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
@@ -1394,8 +1427,11 @@ export function TimelineView({
                             ))}
                             {/* 案件バー（レーンごとに縦位置を計算） */}
                             {assignments.map(({ project: p, lane }) => {
-                              const sd = parseLocalDate(p.start_date!)
-                              const ed = parseLocalDate(p.end_date!)
+                              const override = barDrag.getBarOverride(p.id)
+                              const effStart = override?.start_date ?? p.start_date!
+                              const effEnd = override?.end_date ?? p.end_date!
+                              const sd = parseLocalDate(effStart)
+                              const ed = parseLocalDate(effEnd)
                               const startIdx = dayDiff(start, sd)
                               const endIdx = dayDiff(start, ed)
                               const clampedStart = Math.max(0, startIdx)
@@ -1405,10 +1441,11 @@ export function TimelineView({
                               const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                               const barTop = lane * ROW_HEIGHT + 10
                               const barHeight = ROW_HEIGHT - 20
+                              const isThisDragging = barDrag.draggingId === p.id
                               return (
                                 <div key={p.id}>
                                   <div
-                                    className="absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                    className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                     style={{
                                       left: barLeft,
                                       width: barWidth,
@@ -1416,13 +1453,30 @@ export function TimelineView({
                                       height: barHeight,
                                       backgroundColor: barColorFromProject(p),
                                     }}
-                                    onClick={() => setEditProject(p)}
+                                    onMouseDown={(e) => {
+                                      if (!assignScrollRef.current) return
+                                      barDrag.startDrag("move", p, e, assignScrollRef.current, () => setEditProject(p))
+                                    }}
                                     onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                                     onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                                   >
+                                    <div
+                                      className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                      onMouseDown={(e) => {
+                                        if (!assignScrollRef.current) return
+                                        barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
+                                      }}
+                                    />
                                     <span className="px-2 text-xs text-white font-medium truncate leading-none">
                                       {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                     </span>
+                                    <div
+                                      className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                      onMouseDown={(e) => {
+                                        if (!assignScrollRef.current) return
+                                        barDrag.startDrag("resize-end", p, e, assignScrollRef.current)
+                                      }}
+                                    />
                                   </div>
                                   {/* 日付メモの赤丸 */}
                                   {Object.entries(

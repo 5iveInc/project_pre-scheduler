@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addProject, updateProject, setCustomHolidays, type KeyDate } from "@/database/db"
+import { addProject, updateProjectDates, setCustomHolidays, type KeyDate } from "@/database/db"
 
 function parseKeyDates(json: string | null): KeyDate[] {
   if (!json) return []
@@ -37,20 +37,14 @@ export async function saveCustomHolidaysAction(dates: string[]) {
   revalidatePath("/timeline")
 }
 
-export async function updateProjectTimelineAction(
+export async function updateProjectDatesAction(
   id: number,
-  name: string,
-  assigneeIds: number[],
-  supportIds: number[],
   startDate: string | null,
   endDate: string | null,
-  memo: string | null,
-  volume: number | null,
-  keyDates: KeyDate[] = [],
 ) {
-  if (!name.trim()) return
-  await updateProject(id, name.trim(), assigneeIds, supportIds, startDate || null, endDate || null, memo, volume, keyDates)
+  await updateProjectDates(id, startDate, endDate)
   revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")
 }
+
