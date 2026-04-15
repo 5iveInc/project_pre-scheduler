@@ -39,6 +39,12 @@ async function initSchema() {
       date       TEXT NOT NULL,
       label      TEXT NOT NULL DEFAULT ''
     );
+    CREATE TABLE IF NOT EXISTS project_links (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      label      TEXT NOT NULL DEFAULT '',
+      url        TEXT NOT NULL DEFAULT ''
+    );
     CREATE TABLE IF NOT EXISTS custom_holidays (
       date TEXT PRIMARY KEY
     );
@@ -124,6 +130,7 @@ export async function deleteUsers(ids: number[]): Promise<void> {
 // ── Projects ──────────────────────────────────────────────
 
 export type KeyDate = { date: string; label: string }
+export type ProjectLink = { label: string; url: string }
 
 export type ProjectStatus = "相談中" | "受注済"
 
@@ -140,6 +147,7 @@ export type Project = {
   memo: string | null
   volume: number | null
   key_dates: KeyDate[]
+  links: ProjectLink[]
   created_at: string
   archived: boolean
   parent_id: number | null
@@ -159,6 +167,7 @@ type RawProject = {
   memo: string | null
   volume: number | null
   key_dates_str: string | null
+  links_str: string | null
   created_at: string
   archived: number
   parent_id: number | null
@@ -183,7 +192,9 @@ export async function getProjects(): Promise<Project[]> {
        FROM project_supports ps JOIN users u ON u.id = ps.user_id
        WHERE ps.project_id = p.id) AS support_names_str,
       (SELECT GROUP_CONCAT(kd.date || '|||' || kd.label, '~~~')
-       FROM (SELECT date, label FROM project_key_dates WHERE project_id = p.id ORDER BY date ASC) kd) AS key_dates_str
+       FROM (SELECT date, label FROM project_key_dates WHERE project_id = p.id ORDER BY date ASC) kd) AS key_dates_str,
+      (SELECT GROUP_CONCAT(pl.label || '|||' || pl.url, '~~~')
+       FROM (SELECT label, url FROM project_links WHERE project_id = COALESCE(p.parent_id, p.id) ORDER BY id ASC) pl) AS links_str
     FROM projects p
     ORDER BY p.id ASC
   `)
@@ -206,6 +217,12 @@ export async function getProjects(): Promise<Project[]> {
           return { date: s.slice(0, sep), label: s.slice(sep + 3) }
         })
       : [],
+    links: row.links_str
+      ? row.links_str.split("~~~").map((s) => {
+          const sep = s.indexOf("|||")
+          return { label: s.slice(0, sep), url: s.slice(sep + 3) }
+        })
+      : [],
     created_at: row.created_at,
     archived: row.archived === 1,
     parent_id: row.parent_id,
@@ -219,6 +236,18 @@ async function insertJunction(db: typeof client, table: string, projectId: numbe
       sql: `INSERT OR IGNORE INTO ${table} (project_id, user_id) VALUES (?, ?)`,
       args: [projectId, userId],
     })
+  }
+}
+
+async function replaceLinks(db: typeof client, projectId: number | bigint, links: ProjectLink[]) {
+  await db.execute({ sql: "DELETE FROM project_links WHERE project_id=?", args: [projectId] })
+  for (const link of links) {
+    if (link.url) {
+      await db.execute({
+        sql: "INSERT INTO project_links (project_id, label, url) VALUES (?, ?, ?)",
+        args: [projectId, link.label, link.url],
+      })
+    }
   }
 }
 
@@ -245,6 +274,7 @@ export async function addProject(
   volume: number | null,
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
+  links: ProjectLink[] = [],
 ): Promise<void> {
   const db = await getClient()
   const result = await db.execute({
@@ -255,6 +285,7 @@ export async function addProject(
   await insertJunction(db, "project_assignees", newId, assigneeIds)
   await insertJunction(db, "project_supports", newId, supportIds)
   await replaceKeyDates(db, newId, keyDates)
+  await replaceLinks(db, newId, links)
 }
 
 export async function addChildProject(
@@ -268,6 +299,7 @@ export async function addChildProject(
   volume: number | null,
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
+  links: ProjectLink[] = [],
 ): Promise<void> {
   const db = await getClient()
   const result = await db.execute({
@@ -278,6 +310,8 @@ export async function addChildProject(
   await insertJunction(db, "project_assignees", newId, assigneeIds)
   await insertJunction(db, "project_supports", newId, supportIds)
   await replaceKeyDates(db, newId, keyDates)
+  // リンクは親単位で管理
+  await replaceLinks(db, parentId, links)
 }
 
 export async function updateProject(
@@ -291,6 +325,7 @@ export async function updateProject(
   volume: number | null,
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
+  links: ProjectLink[] = [],
 ): Promise<void> {
   const db = await getClient()
   await db.execute({
@@ -302,6 +337,10 @@ export async function updateProject(
   await insertJunction(db, "project_assignees", id, assigneeIds)
   await insertJunction(db, "project_supports", id, supportIds)
   await replaceKeyDates(db, id, keyDates)
+  // リンクは親単位で管理（子タスクの場合は親IDに保存）
+  const { rows: parentRows } = await db.execute({ sql: "SELECT parent_id FROM projects WHERE id=?", args: [id] })
+  const parentId = (parentRows[0] as unknown as { parent_id: number | null })?.parent_id ?? null
+  await replaceLinks(db, parentId ?? id, links)
 }
 
 export async function updateProjectDates(

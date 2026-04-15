@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { ArchiveIcon, ArchiveRestoreIcon, GitForkIcon, PlusIcon, Trash2Icon } from "lucide-react"
+import { ArchiveIcon, ArchiveRestoreIcon, GitForkIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
   addChildProjectAction,
   deleteProjectsAction,
 } from "@/app/project/actions"
-import type { Project, User } from "@/database/db"
+import type { Project, User, ProjectLink } from "@/database/db"
 
 // ── チェックボックスグループ ────────────────────────────────
 
@@ -76,6 +76,7 @@ export function ProjectFormFields({
     memo?: string | null
     volume?: number | null
     keyDates?: { date: string; label: string }[]
+    links?: ProjectLink[]
   }
   hideStatus?: boolean
   parentDateRange?: { startDate: string | null; endDate: string | null }
@@ -92,6 +93,11 @@ export function ProjectFormFields({
   const [keyDates, setKeyDates] = useState<{ date: string; label: string }[]>(
     defaultValues?.keyDates ?? [],
   )
+  const [links, setLinks] = useState<ProjectLink[]>(defaultValues?.links ?? [])
+  const [newLinkLabel, setNewLinkLabel] = useState("")
+  const [newLinkUrl, setNewLinkUrl] = useState("")
+  const [editingLinkIndex, setEditingLinkIndex] = useState<number | null>(null)
+  const [confirmDeleteLinkIndex, setConfirmDeleteLinkIndex] = useState<number | null>(null)
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
@@ -275,6 +281,137 @@ export function ProjectFormFields({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>リンク集（＋で追加後、最後に保存ボタンを押してください。）</Label>
+            <input type="hidden" name="linksJson" value={JSON.stringify(links)} />
+            {links.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {links.map((link, i) => (
+                  confirmDeleteLinkIndex === i ? (
+                    <div key={i} className="flex items-center gap-1.5 rounded-full border border-destructive/50 bg-destructive/10 px-3 py-1.5">
+                      <span className="text-xs text-destructive">削除しますか？</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLinks((prev) => prev.filter((_, j) => j !== i))
+                          setConfirmDeleteLinkIndex(null)
+                          if (editingLinkIndex === i) {
+                            setEditingLinkIndex(null)
+                            setNewLinkLabel("")
+                            setNewLinkUrl("")
+                          }
+                        }}
+                        className="text-xs font-medium text-destructive hover:underline"
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteLinkIndex(null)}
+                        className="text-xs text-muted-foreground hover:underline"
+                      >
+                        キャンセル
+                      </button>
+                    </div>
+                  ) : (
+                    <div
+                      key={i}
+                      className={[
+                        "group relative inline-flex items-center rounded-full border overflow-hidden transition-colors duration-150",
+                        editingLinkIndex === i ? "border-primary bg-primary/10" : "border-input bg-muted/40",
+                      ].join(" ")}
+                    >
+                      {link.url && (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute inset-0 z-0 group-hover:bg-black transition-colors duration-150"
+                        />
+                      )}
+                      <span
+                        className={[
+                          "relative z-[1] pointer-events-none px-3 py-2 text-sm leading-none transition-colors duration-150",
+                          link.url ? "text-primary group-hover:text-white" : "text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        {link.label || link.url || "（URLなし）"}
+                      </span>
+                      <div className="relative z-[2] flex items-center gap-1 w-0 overflow-hidden group-hover:w-[3.25rem] transition-[width] duration-200 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingLinkIndex(i)
+                            setNewLinkLabel(link.label)
+                            setNewLinkUrl(link.url)
+                          }}
+                          className="flex items-center justify-center size-5 rounded-full text-white hover:bg-white hover:text-black transition-colors shrink-0"
+                        >
+                          <PencilIcon className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteLinkIndex(i)}
+                          className="flex items-center justify-center size-5 rounded-full text-white hover:bg-white hover:text-destructive transition-colors shrink-0"
+                        >
+                          <Trash2Icon className="size-3" />
+                        </button>
+                        <span className="w-1.5 shrink-0" />
+                      </div>
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                placeholder="ラベル"
+                value={newLinkLabel}
+                className="w-[30%]"
+                onChange={(e) => setNewLinkLabel(e.target.value)}
+              />
+              <Input
+                type="url"
+                placeholder="https://..."
+                value={newLinkUrl}
+                className="flex-1"
+                onChange={(e) => setNewLinkUrl(e.target.value)}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  if (!newLinkLabel && !newLinkUrl) return
+                  if (editingLinkIndex !== null) {
+                    setLinks((prev) => prev.map((l, j) => j === editingLinkIndex ? { label: newLinkLabel, url: newLinkUrl } : l))
+                    setEditingLinkIndex(null)
+                  } else {
+                    setLinks((prev) => [...prev, { label: newLinkLabel, url: newLinkUrl }])
+                  }
+                  setNewLinkLabel("")
+                  setNewLinkUrl("")
+                }}
+                className="shrink-0"
+              >
+                <PlusIcon className="size-4" />
+              </Button>
+            </div>
+            {editingLinkIndex !== null && (
+              <p className="text-xs text-muted-foreground">
+                編集中: 変更を反映するには <span className="font-medium">+</span> を押してください
+                <button
+                  type="button"
+                  onClick={() => { setEditingLinkIndex(null); setNewLinkLabel(""); setNewLinkUrl("") }}
+                  className="ml-2 hover:underline"
+                >
+                  キャンセル
+                </button>
+              </p>
+            )}
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="memo">メモ</Label>
             <textarea
@@ -358,7 +495,12 @@ export function ChildTaskModal({
           const raw = formData.get("keyDatesJson") as string | null
           if (raw) keyDates = JSON.parse(raw)
         } catch { /* ignore */ }
-        await updateProjectAction(childTask.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
+        let links: ProjectLink[] = []
+        try {
+          const raw = formData.get("linksJson") as string | null
+          if (raw) links = JSON.parse(raw)
+        } catch { /* ignore */ }
+        await updateProjectAction(childTask.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status, links)
       } else {
         await addChildProjectAction(parentProject.id, formData)
       }
@@ -389,7 +531,10 @@ export function ChildTaskModal({
               memo: childTask.memo,
               volume: childTask.volume,
               keyDates: childTask.key_dates,
-            } : undefined}
+              links: parentProject.links,
+            } : {
+              links: parentProject.links,
+            }}
           />
           <DialogFooter>
             <Button type="submit" disabled={isPending}>
@@ -448,8 +593,13 @@ export function ProjectEditModal({
       const raw = formData.get("keyDatesJson") as string | null
       if (raw) keyDates = JSON.parse(raw)
     } catch { /* ignore */ }
+    let links: ProjectLink[] = []
+    try {
+      const raw = formData.get("linksJson") as string | null
+      if (raw) links = JSON.parse(raw)
+    } catch { /* ignore */ }
     startTransition(async () => {
-      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
+      await updateProjectAction(project.id, name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status, links)
       onOpenChange(false)
     })
   }
@@ -490,6 +640,7 @@ export function ProjectEditModal({
                 memo: project.memo,
                 volume: project.volume,
                 keyDates: project.key_dates,
+                links: project.links,
               }}
             />
             <DialogFooter>

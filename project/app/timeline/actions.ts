@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addProject, updateProjectDates, setCustomHolidays, type KeyDate } from "@/database/db"
+import { addProject, updateProjectDates, setCustomHolidays, type KeyDate, type ProjectLink } from "@/database/db"
 
 function parseKeyDates(json: string | null): KeyDate[] {
   if (!json) return []
@@ -9,6 +9,17 @@ function parseKeyDates(json: string | null): KeyDate[] {
     const parsed = JSON.parse(json)
     if (!Array.isArray(parsed)) return []
     return parsed.filter((kd) => kd && typeof kd.date === "string" && typeof kd.label === "string")
+  } catch {
+    return []
+  }
+}
+
+function parseLinks(json: string | null): ProjectLink[] {
+  if (!json) return []
+  try {
+    const parsed = JSON.parse(json)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((l) => l && typeof l.label === "string" && typeof l.url === "string")
   } catch {
     return []
   }
@@ -23,10 +34,11 @@ export async function addProjectTimelineAction(formData: FormData) {
   const memo = (formData.get("memo") as string) || null
   const volume = Number(formData.get("volume")) || null
   const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
+  const links = parseLinks(formData.get("linksJson") as string | null)
   const rawStatus = formData.get("status") as string | null
   const status = rawStatus === "受注済" ? "受注済" : "相談中"
   if (!name) throw new Error("案件名は必須です")
-  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status)
+  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status, links)
   revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")
