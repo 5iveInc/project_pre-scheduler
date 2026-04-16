@@ -453,6 +453,9 @@ export function TimelineView({
   // 担当タブ 空きハイライト
   const [showAvailabilityHighlight, setShowAvailabilityHighlight] = useState(false)
 
+  // 担当タブ 親バー非表示
+  const [hideParentBars, setHideParentBars] = useState(false)
+
   // 担当タブ絞り込み（hiddenUserIds に含まれるユーザーは非表示）
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<number>>(new Set())
   const [assignFilterOpen, setAssignFilterOpen] = useState(false)
@@ -1164,7 +1167,9 @@ export function TimelineView({
 
       {/* ── 担当タブ ── */}
       {activeTab === "assign" && (() => {
-        const filteredProjects = showOrderedOnly ? projects.filter((p) => p.status === "受注済") : projects
+        const filteredProjects = projects
+          .filter((p) => !showOrderedOnly || p.status === "受注済")
+          .filter((p) => !hideParentBars || !p.has_children)
         const assigneeUsers = users.filter((u) =>
           filteredProjects.some((p) => p.assignee_ids.includes(u.id))
         )
@@ -1214,6 +1219,16 @@ export function TimelineView({
                   className="size-4 rounded border-input accent-primary"
                 />
                 受注済のみ
+              </label>
+              {/* 親を非表示（担当タブ） */}
+              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hideParentBars}
+                  onChange={(e) => setHideParentBars(e.target.checked)}
+                  className="size-4 rounded border-input accent-primary"
+                />
+                親を非表示
               </label>
               {/* 空きハイライト（担当タブ） */}
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
