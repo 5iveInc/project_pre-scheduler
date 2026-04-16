@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(sqlite3 /Users/kanemitsu/01_workspace/03_5ive/01_Develop/project_pre-scheduler/project/database/data.db \".schema\")"
-    ]
-  }
-}
