@@ -1646,24 +1646,27 @@ export function TimelineView({
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">カスタム休日</Label>
                 <div className="space-y-2">
-                  {customDates.map((date, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <Input
-                        type="date"
-                        value={date}
-                        onChange={(e) => updateCustomDate(i, e.target.value)}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeCustomDate(i)}
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2Icon className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
+                  {customDates
+                    .map((date, i) => ({ date, i }))
+                    .filter(({ date }) => date >= toYMD(new Date()))
+                    .map(({ date, i }) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={date}
+                          onChange={(e) => updateCustomDate(i, e.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeCustomDate(i)}
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2Icon className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
                 </div>
                 <Button type="button" variant="outline" size="sm" onClick={addCustomDate}>
                   <PlusIcon className="size-4" />
