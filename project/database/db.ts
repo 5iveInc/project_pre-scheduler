@@ -48,6 +48,11 @@ async function initSchema() {
     CREATE TABLE IF NOT EXISTS custom_holidays (
       date TEXT PRIMARY KEY
     );
+    CREATE TABLE IF NOT EXISTS user_paid_leaves (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      date TEXT NOT NULL,
+      PRIMARY KEY (user_id, date)
+    );
   `)
 
   // status カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
@@ -396,5 +401,27 @@ export async function setCustomHolidays(dates: string[]): Promise<void> {
   await db.execute("DELETE FROM custom_holidays")
   for (const date of valid) {
     await db.execute({ sql: "INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)", args: [date] })
+  }
+}
+
+// ── User Paid Leaves ───────────────────────────────────────
+
+export async function getUserPaidLeaves(): Promise<Record<number, string[]>> {
+  const db = await getClient()
+  const { rows } = await db.execute("SELECT user_id, date FROM user_paid_leaves ORDER BY user_id, date ASC")
+  const result: Record<number, string[]> = {}
+  for (const row of rows as unknown as { user_id: number; date: string }[]) {
+    if (!result[row.user_id]) result[row.user_id] = []
+    result[row.user_id].push(row.date)
+  }
+  return result
+}
+
+export async function setUserPaidLeaves(userId: number, dates: string[]): Promise<void> {
+  const db = await getClient()
+  const valid = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+  await db.execute({ sql: "DELETE FROM user_paid_leaves WHERE user_id=?", args: [userId] })
+  for (const date of valid) {
+    await db.execute({ sql: "INSERT OR IGNORE INTO user_paid_leaves (user_id, date) VALUES (?, ?)", args: [userId, date] })
   }
 }

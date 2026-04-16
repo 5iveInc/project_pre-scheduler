@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
-import { addProjectTimelineAction, saveCustomHolidaysAction, updateProjectDatesAction } from "@/app/timeline/actions"
+import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
 import {
   Dialog,
@@ -194,6 +194,21 @@ function packChildTasks(children: Project[]): Project[][] {
   return rows
 }
 
+// ── 行背景（グリッド線 + 休日バンド）──────────────────────────────
+function buildRowBg(dates: Date[], dayWidth: number, isRest: (d: Date) => boolean): string {
+  const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${dayWidth - 1}px, #e5e7eb ${dayWidth - 1}px, #e5e7eb ${dayWidth}px)`
+  const bands = dates
+    .map((d, i) => {
+      if (!isRest(d)) return null
+      const l = i * dayWidth
+      const r = l + dayWidth
+      return `linear-gradient(to right, transparent ${l}px, #d1d5db ${l}px, #d1d5db ${r}px, transparent ${r}px)`
+    })
+    .filter(Boolean)
+    .join(", ")
+  return bands ? `${gridLine}, ${bands}` : gridLine
+}
+
 // ── 空き日範囲の計算（担当タブ用）──────────────────────────────
 // 本日以降で案件が1つも入っていない日のインデックス範囲を返す
 function computeEmptyRanges(
@@ -273,11 +288,13 @@ export function TimelineView({
   users,
   holidays,
   customHolidays,
+  userPaidLeaves,
 }: {
   projects: Project[]
   users: User[]
   holidays: string[]
   customHolidays: string[]
+  userPaidLeaves: Record<number, string[]>
 }) {
   const holidaySet = new Set([...holidays, ...customHolidays])
   const { start, end } = getDisplayRange(projects)
@@ -407,6 +424,9 @@ export function TimelineView({
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
+  const [userPaidLeaveMap, setUserPaidLeaveMap] = useState<Record<number, string[]>>(userPaidLeaves)
+  const [userSettingsUserId, setUserSettingsUserId] = useState<number | null>(null)
+  const [userSettingsDates, setUserSettingsDates] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
 
   const barDrag = useBarDrag(dayWidth, start, totalDays, (id, newStart, newEnd) => {
@@ -527,6 +547,35 @@ export function TimelineView({
     setCustomDates((prev) => prev.filter((_, i) => i !== index))
   }
 
+  function openUserSettings(userId: number) {
+    setUserSettingsUserId(userId)
+    setUserSettingsDates(userPaidLeaveMap[userId] ?? [])
+  }
+
+  function handleUserSettingsSave() {
+    if (userSettingsUserId === null) return
+    const valid = userSettingsDates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    const uid = userSettingsUserId
+    startTransition(async () => {
+      await saveUserPaidLeavesAction(uid, valid)
+      setUserPaidLeaveMap((prev) => ({ ...prev, [uid]: valid }))
+      setUserSettingsUserId(null)
+    })
+  }
+
+  function addUserSettingsDate() {
+    const ymd = toYMD(new Date())
+    setUserSettingsDates((prev) => [...prev, ymd])
+  }
+
+  function updateUserSettingsDate(index: number, value: string) {
+    setUserSettingsDates((prev) => prev.map((d, i) => (i === index ? value : d)))
+  }
+
+  function removeUserSettingsDate(index: number) {
+    setUserSettingsDates((prev) => prev.filter((_, i) => i !== index))
+  }
+
   function toYMD(d: Date): string {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
@@ -536,17 +585,7 @@ export function TimelineView({
   }
 
   // 縦グリッド線 + 休日列（土日・祝日）の背景を background-image で合成
-  const gridLine = `repeating-linear-gradient(to right, transparent, transparent ${dayWidth - 1}px, #e5e7eb ${dayWidth - 1}px, #e5e7eb ${dayWidth}px)`
-  const restBands = dates
-    .map((d, i) => {
-      if (!isRestDay(d)) return null
-      const l = i * dayWidth
-      const r = l + dayWidth
-      return `linear-gradient(to right, transparent ${l}px, #d1d5db ${l}px, #d1d5db ${r}px, transparent ${r}px)`
-    })
-    .filter(Boolean)
-    .join(", ")
-  const rowBg = restBands ? `${gridLine}, ${restBands}` : gridLine
+  const rowBg = buildRowBg(dates, dayWidth, isRestDay)
   const totalMonthWidth = monthColWidth * 12
 
   const monthViewMonths = useMemo<MonthViewMonth[]>(() => {
@@ -1273,9 +1312,16 @@ export function TimelineView({
                         <div
                           key={u.id}
                           style={{ height: rowHeight }}
-                          className="w-full border-b border-black last:border-b-0 flex items-center px-3"
+                          className="w-full border-b border-black last:border-b-0 flex items-center px-3 gap-1"
                         >
-                          <span className="text-sm font-medium truncate">{u.name}</span>
+                          <span className="text-sm font-medium truncate flex-1">{u.name}</span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                            onClick={() => openUserSettings(u.id)}
+                          >
+                            <Settings2Icon className="size-3.5" />
+                          </button>
                         </div>
                       ))
                     )}
@@ -1396,9 +1442,16 @@ export function TimelineView({
                         <div
                           key={u.id}
                           style={{ height: rowHeight }}
-                          className="w-full border-b border-black last:border-b-0 flex items-center px-3"
+                          className="w-full border-b border-black last:border-b-0 flex items-center px-3 gap-1"
                         >
-                          <span className="text-sm font-medium truncate">{u.name}</span>
+                          <span className="text-sm font-medium truncate flex-1">{u.name}</span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                            onClick={() => openUserSettings(u.id)}
+                          >
+                            <Settings2Icon className="size-3.5" />
+                          </button>
                         </div>
                       ))
                     )}
@@ -1464,13 +1517,21 @@ export function TimelineView({
                         </div>
                       ) : (
                         userLaneData.map(({ user: u, assignments, rowHeight }) => {
+                          const userPaidLeaveSet = new Set(userPaidLeaveMap[u.id] ?? [])
+                          const userIsRest = (d: Date) => isRestDay(d) || userPaidLeaveSet.has(toYMD(d))
+                          const userHolidaySet = userPaidLeaveSet.size > 0
+                            ? new Set([...holidaySet, ...userPaidLeaveSet])
+                            : holidaySet
+                          const userRowBg = userPaidLeaveSet.size > 0
+                            ? buildRowBg(dates, dayWidth, userIsRest)
+                            : rowBg
                           const coveredRanges = showAvailabilityHighlight
-                            ? computeEmptyRanges(assignments, start, totalDays, todayIndex, dates, holidaySet)
+                            ? computeEmptyRanges(assignments, start, totalDays, todayIndex, dates, userHolidaySet)
                             : []
                           return (
                           <div
                             key={u.id}
-                            style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                            style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: userRowBg }}
                             className="border-b border-black last:border-b-0"
                           >
                             {/* 空きハイライト（オレンジ） */}
@@ -1678,6 +1739,57 @@ export function TimelineView({
 
           <DialogFooter>
             <Button onClick={handleSettingsSave} disabled={isPending}>
+              保存する
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── ユーザー個人設定モーダル ── */}
+      <Dialog open={userSettingsUserId !== null} onOpenChange={(open) => { if (!open) setUserSettingsUserId(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {users.find((u) => u.id === userSettingsUserId)?.name ?? ""} の個人設定
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold">有給休暇</h3>
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">有給日（設定した日は担当行で休日扱いになります）</Label>
+                <div className="space-y-2">
+                  {userSettingsDates
+                    .map((date, i) => ({ date, i }))
+                    .filter(({ date }) => date >= toYMD(new Date()))
+                    .map(({ date, i }) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <Input
+                          type="date"
+                          value={date}
+                          onChange={(e) => updateUserSettingsDate(i, e.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeUserSettingsDate(i)}
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2Icon className="size-4" />
+                        </Button>
+                      </div>
+                    ))}
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={addUserSettingsDate}>
+                  <PlusIcon className="size-4" />
+                  日付を追加
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleUserSettingsSave} disabled={isPending}>
               保存する
             </Button>
           </DialogFooter>

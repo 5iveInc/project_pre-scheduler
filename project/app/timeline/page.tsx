@@ -1,4 +1,4 @@
-import { getProjects, getUsers, getCustomHolidays } from "@/database/db"
+import { getProjects, getUsers, getCustomHolidays, getUserPaidLeaves } from "@/database/db"
 import { TimelineView } from "@/app/timeline/_components/timeline-view"
 
 async function fetchHolidays(year: number): Promise<string[]> {
@@ -15,10 +15,11 @@ async function fetchHolidays(year: number): Promise<string[]> {
 }
 
 export default async function TimelinePage() {
-  const [projects, users, customHolidays] = await Promise.all([
+  const [projects, users, customHolidays, userPaidLeaves] = await Promise.all([
     getProjects(),
     getUsers(),
     getCustomHolidays(),
+    getUserPaidLeaves(),
   ])
   const activeProjects = projects.filter((p) => !p.archived)
 
@@ -41,7 +42,7 @@ export default async function TimelinePage() {
             </p>
           </div>
 
-          <TimelineView projects={activeProjects} users={users} holidays={holidays} customHolidays={customHolidays} />
+          <TimelineView projects={activeProjects} users={users} holidays={holidays} customHolidays={customHolidays} userPaidLeaves={userPaidLeaves} />
         </div>
       </div>
     </div>
