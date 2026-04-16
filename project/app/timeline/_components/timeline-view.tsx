@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon } from "lucide-react"
+import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon, ChevronRightIcon } from "lucide-react"
 import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
@@ -170,6 +170,28 @@ function calcMonthViewBar(
   if (rightPct <= leftPct) return null
 
   return { leftPct, widthPct: rightPct - leftPct }
+}
+
+// ── 子タスクの行パッキング ──────────────────────────────────────
+// 期間が重ならない子タスクを同じ行にまとめて返す
+function packChildTasks(children: Project[]): Project[][] {
+  const rows: Project[][] = []
+  for (const child of children) {
+    let placed = false
+    for (const row of rows) {
+      const overlaps = row.some((r) => {
+        if (!r.start_date || !r.end_date || !child.start_date || !child.end_date) return false
+        return !(child.end_date < r.start_date || child.start_date > r.end_date)
+      })
+      if (!overlaps) {
+        row.push(child)
+        placed = true
+        break
+      }
+    }
+    if (!placed) rows.push([child])
+  }
+  return rows
 }
 
 // ── 空き日範囲の計算（担当タブ用）──────────────────────────────
@@ -368,6 +390,17 @@ export function TimelineView({
     ro.observe(el)
     return () => ro.disconnect()
   }, [viewMode, activeTab])
+
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Set<number>>(new Set())
+
+  function toggleExpand(id: number) {
+    setExpandedProjectIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [memoTooltip, setMemoTooltip] = useState<{ memo: string; x: number; y: number } | null>(null)
@@ -680,23 +713,39 @@ export function TimelineView({
                   案件なし
                 </div>
               ) : (
-                projectTabProjects.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    style={{ height: ROW_HEIGHT }}
-                    className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => setEditProject(p)}
-                    title={`${p.name}（クリックで編集）`}
-                  >
-                    {p.volume !== null && (
-                      <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
-                        Lv.{p.volume}
-                      </span>
-                    )}
-                    <span className="text-sm font-medium truncate">{p.name}</span>
-                  </button>
-                ))
+                projectTabProjects.flatMap((p) => {
+                  const isExpanded = expandedProjectIds.has(p.id)
+                  const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                  const packedRows = isExpanded ? packChildTasks(childTasks) : []
+                  return [
+                    <button
+                      key={p.id}
+                      type="button"
+                      style={{ height: ROW_HEIGHT }}
+                      className="w-full border-b flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
+                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                    >
+                      {p.has_children && (
+                        <ChevronRightIcon
+                          className={`shrink-0 size-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        />
+                      )}
+                      <span className="text-sm font-medium truncate">{p.name}</span>
+                    </button>,
+                    ...packedRows.map((_, rowIdx) => (
+                      <div
+                        key={`child-row-${p.id}-${rowIdx}`}
+                        style={{ height: ROW_HEIGHT }}
+                        className="w-full border-b flex items-center gap-2 pl-8 pr-3 bg-muted/20"
+                      >
+                        {rowIdx === 0 && (
+                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
+                        )}
+                      </div>
+                    )),
+                  ]
+                })
               )}
             </div>
             <div ref={monthViewScrollRef} className="overflow-x-auto flex-1">
@@ -717,69 +766,103 @@ export function TimelineView({
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  projectTabProjects.map((p) => {
-                    const barInfo = calcMonthViewBar(p, monthViewMonths)
-                    const barColor = barColorFromProject(p, true)
-                    const keyDateEntries = Object.entries(
-                      p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
+                  projectTabProjects.flatMap((p) => {
+                    const isExpanded = expandedProjectIds.has(p.id)
+                    const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                    const packedRows = isExpanded ? packChildTasks(childTasks) : []
+
+                    const parentBarInfo = calcMonthViewBar(p, monthViewMonths)
+                    const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
+                    // 親 + 全子タスクの key_dates を親行に常に集約して表示
+                    const parentKeyDates = Object.entries(
+                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
                         ;(acc[kd.date] ??= []).push(kd.label || kd.date)
                         return acc
                       }, {}),
                     )
-                    return (
+
+                    return [
+                      // 親案件行
                       <div
                         key={p.id}
                         style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
-                        className="flex border-b last:border-b-0"
+                        className="flex border-b"
                       >
                         {monthViewMonths.map((m) => (
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
-                        {barInfo && (
+                        {parentBarInfo && (
                           <div
                             className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
                             style={{
-                              left: `${barInfo.leftPct}%`,
-                              width: `${barInfo.widthPct}%`,
+                              left: `${parentBarInfo.leftPct}%`,
+                              width: `${parentBarInfo.widthPct}%`,
                               top: 10,
                               bottom: 10,
-                              backgroundColor: barColor,
+                              backgroundColor: parentBarColor,
                             }}
                             onClick={() => setEditProject(p)}
                             onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
                             <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                            </span>
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
                             <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         )}
-                        {keyDateEntries.map(([date, labels]) => {
+                        {parentKeyDates.map(([date, labels]) => {
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                           if (centerPct === null) return null
                           return (
                             <Tooltip key={date}>
                               <TooltipTrigger
                                 className="absolute rounded-full z-10 cursor-default"
-                                style={{
-                                  left: `calc(${centerPct}% - 5px)`,
-                                  top: ROW_HEIGHT / 2 - 5,
-                                  width: 10,
-                                  height: 10,
-                                  backgroundColor: "#ef4444",
-                                }}
+                                style={{ left: `calc(${centerPct}% - 5px)`, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }}
                               />
-                              <TooltipContent>
-                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                              </TooltipContent>
+                              <TooltipContent><span className="whitespace-pre-line">{labels.join("\n")}</span></TooltipContent>
                             </Tooltip>
                           )
                         })}
-                      </div>
-                    )
+                      </div>,
+                      // 子タスクパック行
+                      ...packedRows.map((rowChildren, rowIdx) => (
+                        <div
+                          key={`child-row-${p.id}-${rowIdx}`}
+                          style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
+                          className="flex border-b bg-muted/20"
+                        >
+                          {monthViewMonths.map((m) => (
+                            <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                          ))}
+                          {rowChildren.map((c) => {
+                            const barInfo = calcMonthViewBar(c, monthViewMonths)
+                            if (!barInfo) return null
+                            const barColor = barColorFromProject(c, true)
+                            return (
+                              <div
+                                key={c.id}
+                                className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                style={{
+                                  left: `${barInfo.leftPct}%`,
+                                  width: `${barInfo.widthPct}%`,
+                                  top: 10,
+                                  bottom: 10,
+                                  backgroundColor: barColor,
+                                }}
+                                onClick={() => setEditProject(c)}
+                                onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
+                              >
+                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
+                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )),
+                    ]
                   })
                 )}
               </div>
@@ -816,23 +899,39 @@ export function TimelineView({
                   案件なし
                 </div>
               ) : (
-                projectTabProjects.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    style={{ height: ROW_HEIGHT }}
-                    className="w-full border-b last:border-b-0 flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
-                    onClick={() => setEditProject(p)}
-                    title={`${p.name}（クリックで編集）`}
-                  >
-                    {p.volume !== null && (
-                      <span className="shrink-0 text-[10px] font-semibold text-muted-foreground bg-muted rounded px-1 py-0.5 leading-none">
-                        Lv.{p.volume}
-                      </span>
-                    )}
-                    <span className="text-sm font-medium truncate">{p.name}</span>
-                  </button>
-                ))
+                projectTabProjects.flatMap((p) => {
+                  const isExpanded = expandedProjectIds.has(p.id)
+                  const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                  const packedRows = isExpanded ? packChildTasks(childTasks) : []
+                  return [
+                    <button
+                      key={p.id}
+                      type="button"
+                      style={{ height: ROW_HEIGHT }}
+                      className="w-full border-b flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
+                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                    >
+                      {p.has_children && (
+                        <ChevronRightIcon
+                          className={`shrink-0 size-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                        />
+                      )}
+                      <span className="text-sm font-medium truncate">{p.name}</span>
+                    </button>,
+                    ...packedRows.map((_, rowIdx) => (
+                      <div
+                        key={`child-left-${p.id}-${rowIdx}`}
+                        style={{ height: ROW_HEIGHT }}
+                        className="w-full border-b flex items-center pl-8 pr-3 bg-muted/20"
+                      >
+                        {rowIdx === 0 && (
+                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
+                        )}
+                      </div>
+                    )),
+                  ]
+                })
               )}
             </div>
 
@@ -895,133 +994,117 @@ export function TimelineView({
                     案件がありません。「案件一覧」から登録してください。
                   </div>
                 ) : (
-                  projectTabProjects.map((p) => {
-                    const override = barDrag.getBarOverride(p.id)
-                    const effStart = override?.start_date ?? p.start_date
-                    const effEnd = override?.end_date ?? p.end_date
+                  projectTabProjects.flatMap((p) => {
+                    const isExpanded = expandedProjectIds.has(p.id)
+                    const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                    const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
-                    let barLeft: number | null = null
-                    let barWidth: number | null = null
-
-                    if (effStart && effEnd) {
-                      const sd = parseLocalDate(effStart)
-                      const ed = parseLocalDate(effEnd)
-                      const startIdx = dayDiff(start, sd)
-                      const endIdx = dayDiff(start, ed)
-                      const clampedStart = Math.max(0, startIdx)
-                      const clampedEnd = Math.min(totalDays - 1, endIdx)
+                    const parentOverride = barDrag.getBarOverride(p.id)
+                    const parentEffStart = parentOverride?.start_date ?? p.start_date
+                    const parentEffEnd = parentOverride?.end_date ?? p.end_date
+                    let parentBarLeft: number | null = null
+                    let parentBarWidth: number | null = null
+                    if (parentEffStart && parentEffEnd) {
+                      const sd = parseLocalDate(parentEffStart)
+                      const ed = parseLocalDate(parentEffEnd)
+                      const clampedStart = Math.max(0, dayDiff(start, sd))
+                      const clampedEnd = Math.min(totalDays - 1, dayDiff(start, ed))
                       if (clampedStart <= clampedEnd) {
-                        barLeft = clampedStart * dayWidth + 3
-                        barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                        parentBarLeft = clampedStart * dayWidth + 3
+                        parentBarWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                       }
                     }
+                    const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
+                    const isParentDragging = barDrag.draggingId === p.id
+                    // 親 + 全子タスクの key_dates を親行に常に集約して表示
+                    const allKeyDatesForParentDay = Object.entries(
+                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
+                        if (!kd.date) return acc
+                        ;(acc[kd.date] ??= []).push(kd.label || kd.date)
+                        return acc
+                      }, {}),
+                    )
 
-                    const barColor = barColorFromProject(p, true)
-                    const isThisDragging = barDrag.draggingId === p.id
-
-                    return (
+                    return [
+                      // 親案件行
                       <div
                         key={p.id}
-                        style={{
-                          height: ROW_HEIGHT,
-                          width: totalWidth,
-                          position: "relative",
-                          backgroundImage: rowBg,
-                        }}
-                        className="border-b last:border-b-0"
+                        style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                        className="border-b"
                       >
-                        {/* 今日のカラムハイライト */}
                         {showTodayLine && (
-                          <div
-                            className="absolute top-0 bottom-0 pointer-events-none"
-                            style={{
-                              left: todayIndex * dayWidth,
-                              width: dayWidth,
-                              backgroundColor: "rgba(74,222,128,0.3)",
-                            }}
-                          />
+                          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
                         )}
-                        {/* クリックハイライト列 */}
                         {Array.from(highlightedDateIndices).map((idx) => (
-                          <div
-                            key={idx}
-                            className="absolute top-0 bottom-0 pointer-events-none"
-                            style={{
-                              left: idx * dayWidth,
-                              width: dayWidth,
-                              backgroundColor: "rgba(234,179,8,0.2)",
-                            }}
-                          />
+                          <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                         ))}
-
-                        {/* バー */}
-                        {barLeft !== null && barWidth !== null && (
+                        {parentBarLeft !== null && parentBarWidth !== null && (
                           <div
-                            className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                            style={{
-                              left: barLeft,
-                              width: barWidth,
-                              top: 10,
-                              bottom: 10,
-                              backgroundColor: barColor,
-                            }}
-                            onMouseDown={(e) => {
-                              if (!scrollRef.current) return
-                              barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p))
-                            }}
+                            className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                            style={{ left: parentBarLeft, width: parentBarWidth, top: 10, bottom: 10, backgroundColor: parentBarColor }}
+                            onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p)) }}
                             onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
                             onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
                           >
-                            <div
-                              className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
-                              onMouseDown={(e) => {
-                                if (!scrollRef.current) return
-                                barDrag.startDrag("resize-start", p, e, scrollRef.current)
-                              }}
-                            />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                              {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                            </span>
-                            <div
-                              className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
-                              onMouseDown={(e) => {
-                                if (!scrollRef.current) return
-                                barDrag.startDrag("resize-end", p, e, scrollRef.current)
-                              }}
-                            />
+                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", p, e, scrollRef.current) }} />
+                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
+                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", p, e, scrollRef.current) }} />
                           </div>
                         )}
-
-                        {/* 日付メモの赤丸（同日はまとめて1つに） */}
-                        {Object.entries(
-                          p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                            if (!kd.date) return acc
-                            ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                            return acc
-                          }, {}),
-                        ).map(([date, labels]) => {
+                        {allKeyDatesForParentDay.map(([date, labels]) => {
                           const kdIdx = dayDiff(start, parseLocalDate(date))
                           if (kdIdx < 0 || kdIdx >= totalDays) return null
                           return (
                             <Tooltip key={date}>
-                              <TooltipTrigger
-                                className="absolute rounded-full z-10 cursor-default"
-                                style={{
-                                  left: kdIdx * dayWidth + dayWidth / 2 - 5,
-                                  top: ROW_HEIGHT / 2 - 5,
-                                  width: 10,
-                                  height: 10,
-                                  backgroundColor: "#ef4444",
-                                }}
-                              />
-                              <TooltipContent>
-                                <span className="whitespace-pre-line">{labels.join("\n")}</span>
-                              </TooltipContent>
+                              <TooltipTrigger className="absolute rounded-full z-10 cursor-default" style={{ left: kdIdx * dayWidth + dayWidth / 2 - 5, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }} />
+                              <TooltipContent><span className="whitespace-pre-line">{labels.join("\n")}</span></TooltipContent>
                             </Tooltip>
                           )
                         })}
-                      </div>
-                    )
+                      </div>,
+                      // 子タスクパック行
+                      ...packedRows.map((rowChildren, rowIdx) => (
+                        <div
+                          key={`child-row-${p.id}-${rowIdx}`}
+                          style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                          className="border-b bg-muted/20"
+                        >
+                          {showTodayLine && (
+                            <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
+                          )}
+                          {Array.from(highlightedDateIndices).map((idx) => (
+                            <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
+                          ))}
+                          {rowChildren.map((c) => {
+                            const override = barDrag.getBarOverride(c.id)
+                            const effStart = override?.start_date ?? c.start_date
+                            const effEnd = override?.end_date ?? c.end_date
+                            if (!effStart || !effEnd) return null
+                            const clampedStart = Math.max(0, dayDiff(start, parseLocalDate(effStart)))
+                            const clampedEnd = Math.min(totalDays - 1, dayDiff(start, parseLocalDate(effEnd)))
+                            if (clampedStart > clampedEnd) return null
+                            const barLeft = clampedStart * dayWidth + 3
+                            const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                            const barColor = barColorFromProject(c, true)
+                            const isThisDragging = barDrag.draggingId === c.id
+                            return (
+                              <div
+                                key={c.id}
+                                className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
+                                onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current, () => setEditProject(c)) }}
+                                onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
+                                onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
+                              >
+                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
+                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
+                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )),
+                    ]
                   })
                 )}
               </div>
