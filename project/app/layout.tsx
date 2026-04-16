@@ -20,6 +20,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "5ive Next App",
   description: "Project Management for 5ive",
+  robots: { index: false, follow: false },
 }
 
 export default function RootLayout({
