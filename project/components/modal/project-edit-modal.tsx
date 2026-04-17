@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import React, { useState, useTransition } from "react"
 import { ArchiveIcon, ArchiveRestoreIcon, GitForkIcon, Trash2Icon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -21,7 +21,7 @@ import {
   addStakeholderAction,
   removeStakeholderAction,
 } from "@/app/project/actions"
-import type { Project, User, ProjectLink, Stakeholder } from "@/database/db"
+import type { Project, User, ProjectLink, Stakeholder, AssigneeType } from "@/database/db"
 
 // ── チェックボックスグループ ────────────────────────────────
 
@@ -55,16 +55,49 @@ function UserCheckboxGroup({
   )
 }
 
+function StakeholderCheckboxGroup({
+  stakeholders,
+  checkedIds,
+  onChange,
+}: {
+  stakeholders: Stakeholder[]
+  checkedIds: Set<number>
+  onChange: (id: number, checked: boolean) => void
+}) {
+  if (stakeholders.length === 0) {
+    return <p className="text-sm text-muted-foreground p-2">関係者が登録されていません</p>
+  }
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg border border-input p-3">
+      {stakeholders.map((s) => (
+        <label key={s.id} className="flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="stakeholderAssigneeId"
+            value={s.id}
+            checked={checkedIds.has(s.id)}
+            onChange={(e) => onChange(s.id, e.target.checked)}
+            className="size-4 rounded border-input accent-primary"
+          />
+          {s.name}
+        </label>
+      ))}
+    </div>
+  )
+}
+
 // ── フォームフィールド ──────────────────────────────────────
 // 編集・追加モーダル両方から使用するためexport
 
 export function ProjectFormFields({
   users,
   defaultValues,
+  nameLabel = "案件名",
   hideStatus = false,
   hideLinks = false,
   hideClientName = false,
   parentDateRange,
+  parentStakeholders,
   childTasks,
   onChildTaskClick,
   onChildTaskDelete,
@@ -77,6 +110,8 @@ export function ProjectFormFields({
     status?: "相談中" | "受注済"
     clientName?: string | null
     assigneeIds?: number[]
+    assigneeType?: AssigneeType
+    stakeholderAssigneeIds?: number[]
     startDate?: string | null
     endDate?: string | null
     memo?: string | null
@@ -84,10 +119,12 @@ export function ProjectFormFields({
     keyDates?: { date: string; label: string }[]
     links?: ProjectLink[]
   }
+  nameLabel?: string
   hideStatus?: boolean
   hideClientName?: boolean
   hideLinks?: boolean
   parentDateRange?: { startDate: string | null; endDate: string | null }
+  parentStakeholders?: Stakeholder[]
   childTasks?: Project[]
   onChildTaskClick?: (task: Project) => void
   onChildTaskDelete?: (task: Project) => void
@@ -97,6 +134,7 @@ export function ProjectFormFields({
   const [name, setName] = useState(defaultValues?.name ?? "")
   const [clientName, setClientName] = useState(defaultValues?.clientName ?? "")
   const [status, setStatus] = useState<"相談中" | "受注済">(hideStatus ? "受注済" : (defaultValues?.status ?? "相談中"))
+  const [assigneeType, setAssigneeType] = useState<AssigneeType>(defaultValues?.assigneeType ?? "5ive")
   const [startDate, setStartDate] = useState(defaultValues?.startDate ?? "")
   const [endDate, setEndDate] = useState(defaultValues?.endDate ?? "")
   const [memo, setMemo] = useState(defaultValues?.memo ?? "")
@@ -112,8 +150,11 @@ export function ProjectFormFields({
   const [assigneeIds, setAssigneeIds] = useState<Set<number>>(
     new Set(defaultValues?.assigneeIds ?? []),
   )
+  const [stakeholderAssigneeIds, setStakeholderAssigneeIds] = useState<Set<number>>(
+    new Set(defaultValues?.stakeholderAssigneeIds ?? []),
+  )
 
-  function toggle(setter: typeof setAssigneeIds) {
+  function toggle(setter: React.Dispatch<React.SetStateAction<Set<number>>>) {
     return (id: number, checked: boolean) =>
       setter((prev) => {
         const next = new Set(prev)
@@ -126,7 +167,7 @@ export function ProjectFormFields({
   return (
     <>
       <div className="space-y-1.5">
-        <Label htmlFor="name">案件名</Label>
+        <Label htmlFor="name">{nameLabel}</Label>
         <Input
           id="name"
           name="name"
@@ -178,25 +219,70 @@ export function ProjectFormFields({
             </div>
           )}
 
-          <div className="flex gap-4">
-            <div className="space-y-1.5 flex-1">
-              <Label>アサイン</Label>
-              <UserCheckboxGroup
-                users={users}
-                name="assigneeId"
-                checkedIds={assigneeIds}
-                onChange={toggle(setAssigneeIds)}
-              />
+          {parentStakeholders !== undefined ? (
+            <div className="space-y-2">
+              <Label>アサインの種類</Label>
+              <input type="hidden" name="assigneeType" value={assigneeType} />
+              <div className="flex rounded-md border border-input overflow-hidden w-fit">
+                {(["5ive", "client", "stakeholder"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setAssigneeType(t)}
+                    className={[
+                      "px-4 py-1.5 text-sm font-medium transition-colors",
+                      assigneeType === t
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-background text-muted-foreground hover:bg-muted",
+                    ].join(" ")}
+                  >
+                    {t === "5ive" ? "5ive" : t === "client" ? "クライアント" : "関係者"}
+                  </button>
+                ))}
+              </div>
+              {assigneeType === "5ive" && (
+                <div className="space-y-1.5">
+                  <Label>メンバー</Label>
+                  <UserCheckboxGroup
+                    users={users}
+                    name="assigneeId"
+                    checkedIds={assigneeIds}
+                    onChange={toggle(setAssigneeIds)}
+                  />
+                </div>
+              )}
+              {assigneeType === "stakeholder" && (
+                <div className="space-y-1.5">
+                  <Label>関係者を選択</Label>
+                  <StakeholderCheckboxGroup
+                    stakeholders={parentStakeholders}
+                    checkedIds={stakeholderAssigneeIds}
+                    onChange={toggle(setStakeholderAssigneeIds)}
+                  />
+                </div>
+              )}
             </div>
-            {stakeholderProjectId !== undefined && initialStakeholders !== undefined && (
-              <div className="flex-1">
-                <StakeholderSection
-                  projectId={stakeholderProjectId}
-                  initialStakeholders={initialStakeholders}
+          ) : (
+            <div className="flex gap-4">
+              <div className="space-y-1.5 flex-1">
+                <Label>アサイン</Label>
+                <UserCheckboxGroup
+                  users={users}
+                  name="assigneeId"
+                  checkedIds={assigneeIds}
+                  onChange={toggle(setAssigneeIds)}
                 />
               </div>
-            )}
-          </div>
+              {stakeholderProjectId !== undefined && initialStakeholders !== undefined && (
+                <div className="flex-1">
+                  <StakeholderSection
+                    projectId={stakeholderProjectId}
+                    initialStakeholders={initialStakeholders}
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {parentDateRange && (
             <div className="space-y-1.5">
@@ -503,7 +589,10 @@ export function ChildTaskModal({
     startTransition(async () => {
       if (childTask) {
         const name = (formData.get("name") as string).trim()
-        const assigneeIds = formData.getAll("assigneeId").map(Number).filter(Boolean)
+        const rawAssigneeType = formData.get("assigneeType") as string | null
+        const assigneeType: AssigneeType = rawAssigneeType === "client" || rawAssigneeType === "stakeholder" ? rawAssigneeType : "5ive"
+        const assigneeIds = assigneeType === "5ive" ? formData.getAll("assigneeId").map(Number).filter(Boolean) : []
+        const stakeholderAssigneeIds = assigneeType === "stakeholder" ? formData.getAll("stakeholderAssigneeId").map(Number).filter(Boolean) : []
         const startDate = (formData.get("startDate") as string) || null
         const endDate = (formData.get("endDate") as string) || null
         const memo = (formData.get("memo") as string) || null
@@ -520,7 +609,7 @@ export function ChildTaskModal({
           const raw = formData.get("linksJson") as string | null
           if (raw) links = JSON.parse(raw)
         } catch { /* ignore */ }
-        await updateProjectAction(childTask.id, name, assigneeIds, null, startDate, endDate, memo, volume, keyDates, status, links)
+        await updateProjectAction(childTask.id, name, assigneeIds, null, startDate, endDate, memo, volume, keyDates, status, links, assigneeType, stakeholderAssigneeIds)
       } else {
         await addChildProjectAction(parentProject.id, formData)
       }
@@ -539,14 +628,18 @@ export function ChildTaskModal({
         </DialogHeader>
         <form key={childTask?.id ?? `child-of-${parentProject.id}`} action={handleSave} className="space-y-4">
           <ProjectFormFields
-            users={users}
+            users={users.filter((u) => parentProject.assignee_ids.includes(u.id))}
+            nameLabel="フェーズ名"
             hideStatus
             hideLinks
             hideClientName
+            parentStakeholders={parentProject.stakeholders}
             parentDateRange={{ startDate: parentProject.start_date, endDate: parentProject.end_date }}
             defaultValues={childTask ? {
               name: childTask.name,
               assigneeIds: childTask.assignee_ids,
+              assigneeType: childTask.assignee_type,
+              stakeholderAssigneeIds: childTask.stakeholder_assignee_ids,
               startDate: childTask.start_date,
               endDate: childTask.end_date,
               memo: childTask.memo,

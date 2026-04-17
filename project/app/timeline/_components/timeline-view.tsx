@@ -64,6 +64,10 @@ function barColorFromParentVolume(volume: number | null): string {
 
 function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
+  if (p.parent_id !== null) {
+    if (p.assignee_type === "client") return "#f87171" // red-400
+    if (p.assignee_type === "stakeholder") return "#fde047" // yellow-300
+  }
   if (!ignoreChildren && p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
 }
@@ -881,6 +885,7 @@ export function TimelineView({
                             const barInfo = calcMonthViewBar(c, monthViewMonths)
                             if (!barInfo) return null
                             const barColor = barColorFromProject(c, true)
+                            const isDark = c.assignee_type === "stakeholder"
                             return (
                               <div
                                 key={c.id}
@@ -896,9 +901,9 @@ export function TimelineView({
                                 onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
                                 onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
                               >
-                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
-                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
                               </div>
                             )
                           })}
@@ -1129,6 +1134,7 @@ export function TimelineView({
                             const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                             const barColor = barColorFromProject(c, true)
                             const isThisDragging = barDrag.draggingId === c.id
+                            const isDark = c.assignee_type === "stakeholder"
                             return (
                               <div
                                 key={c.id}
@@ -1138,9 +1144,9 @@ export function TimelineView({
                                 onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
                                 onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
                               >
-                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
-                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
-                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
+                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
                               </div>
                             )
                           })}
@@ -1170,6 +1176,7 @@ export function TimelineView({
         const filteredProjects = projects
           .filter((p) => !showOrderedOnly || p.status === "受注済")
           .filter((p) => !hideParentBars || !p.has_children)
+          .filter((p) => p.parent_id === null || p.assignee_type === "5ive")
         const assigneeUsers = users.filter((u) =>
           filteredProjects.some((p) => p.assignee_ids.includes(u.id))
         )
