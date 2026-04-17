@@ -412,6 +412,7 @@ export async function addStakeholder(projectId: number, name: string): Promise<S
 
 export async function removeStakeholder(id: number): Promise<void> {
   const db = await getClient()
+  await db.execute({ sql: "DELETE FROM project_child_stakeholders WHERE stakeholder_id=?", args: [id] })
   await db.execute({ sql: "DELETE FROM project_stakeholders WHERE id=?", args: [id] })
 }
 
@@ -442,10 +443,11 @@ export async function deleteProjects(ids: number[]): Promise<void> {
   const allPlaceholders = allIds.map(() => "?").join(", ")
 
   if (allIds.length > 0) {
-    await db.execute({ sql: `DELETE FROM project_assignees   WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_key_dates   WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_links       WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds })
   }
 
   await db.execute({ sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids })

@@ -66,7 +66,9 @@ function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
   if (p.parent_id !== null) {
     if (p.assignee_type === "client") return "#f87171" // red-400
-    if (p.assignee_type === "stakeholder") return "#fde047" // yellow-300
+    if (p.assignee_type === "stakeholder") {
+      return p.stakeholder_assignee_ids.length === 0 ? "#000000" : "#fde047" // black : yellow-300
+    }
   }
   if (!ignoreChildren && p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
@@ -885,7 +887,7 @@ export function TimelineView({
                             const barInfo = calcMonthViewBar(c, monthViewMonths)
                             if (!barInfo) return null
                             const barColor = barColorFromProject(c, true)
-                            const isDark = c.assignee_type === "stakeholder"
+                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
                               <div
                                 key={c.id}
@@ -1134,7 +1136,7 @@ export function TimelineView({
                             const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                             const barColor = barColorFromProject(c, true)
                             const isThisDragging = barDrag.draggingId === c.id
-                            const isDark = c.assignee_type === "stakeholder"
+                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
                               <div
                                 key={c.id}
