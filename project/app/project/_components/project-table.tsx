@@ -34,15 +34,15 @@ import type { Project, User } from "@/database/db"
 
 function buildAssigneeLabel(project: Project): string | null {
   const names = project.assignee_names
-  const supportCount = project.support_ids.length
+  const stakeholderCount = project.stakeholders.length
 
-  if (names.length === 0 && supportCount === 0) return null
+  if (names.length === 0 && stakeholderCount === 0) return null
 
   const namesPart = names.join(", ")
-  const supportPart = supportCount > 0 ? `他${supportCount}名` : ""
+  const stakeholderPart = stakeholderCount > 0 ? `他${stakeholderCount}名` : ""
 
-  if (namesPart && supportPart) return `${namesPart} ${supportPart}`
-  return namesPart || supportPart
+  if (namesPart && stakeholderPart) return `${namesPart} ${stakeholderPart}`
+  return namesPart || stakeholderPart
 }
 
 // ── 行（読み取り専用 + 編集モーダル） ─────────────────────────
@@ -253,7 +253,7 @@ export function ProjectTable({
             <TableRow>
               <TableHead className="w-10 pl-6" />
               <TableHead>案件名</TableHead>
-              <TableHead className="w-56">アサイン / サポート</TableHead>
+              <TableHead className="w-56">アサイン / 関係者</TableHead>
               <TableHead className="w-36">開始日</TableHead>
               <TableHead className="w-36 pr-6">終了日</TableHead>
             </TableRow>

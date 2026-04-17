@@ -28,7 +28,7 @@ function parseLinks(json: string | null): ProjectLink[] {
 export async function addProjectTimelineAction(formData: FormData) {
   const name = (formData.get("name") as string).trim()
   const assigneeIds = formData.getAll("assigneeId").map(Number).filter(Boolean)
-  const supportIds = formData.getAll("supportId").map(Number).filter(Boolean)
+  const clientName = (formData.get("clientName") as string) || null
   const startDate = (formData.get("startDate") as string) || null
   const endDate = (formData.get("endDate") as string) || null
   const memo = (formData.get("memo") as string) || null
@@ -38,7 +38,7 @@ export async function addProjectTimelineAction(formData: FormData) {
   const rawStatus = formData.get("status") as string | null
   const status = rawStatus === "受注済" ? "受注済" : "相談中"
   if (!name) throw new Error("案件名は必須です")
-  await addProject(name, assigneeIds, supportIds, startDate, endDate, memo, volume, keyDates, status, links)
+  await addProject(name, assigneeIds, clientName, startDate, endDate, memo, volume, keyDates, status, links)
   revalidatePath("/")
   revalidatePath("/timeline")
   revalidatePath("/project")
