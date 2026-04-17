@@ -60,6 +60,7 @@ export function ProjectFormFields({
   users,
   defaultValues,
   hideStatus = false,
+  hideLinks = false,
   parentDateRange,
   childTasks,
   onChildTaskClick,
@@ -79,6 +80,7 @@ export function ProjectFormFields({
     links?: ProjectLink[]
   }
   hideStatus?: boolean
+  hideLinks?: boolean
   parentDateRange?: { startDate: string | null; endDate: string | null }
   childTasks?: Project[]
   onChildTaskClick?: (task: Project) => void
@@ -281,6 +283,7 @@ export function ProjectFormFields({
             </div>
           </div>
 
+          {!hideLinks && (
           <div className="space-y-2">
             <Label>リンク集（＋で追加後、最後に保存ボタンを押してください。）</Label>
             <input type="hidden" name="linksJson" value={JSON.stringify(links)} />
@@ -411,6 +414,7 @@ export function ProjectFormFields({
               </p>
             )}
           </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="memo">メモ</Label>
@@ -521,6 +525,7 @@ export function ChildTaskModal({
           <ProjectFormFields
             users={users}
             hideStatus
+            hideLinks
             parentDateRange={{ startDate: parentProject.start_date, endDate: parentProject.end_date }}
             defaultValues={childTask ? {
               name: childTask.name,
@@ -531,10 +536,7 @@ export function ChildTaskModal({
               memo: childTask.memo,
               volume: childTask.volume,
               keyDates: childTask.key_dates,
-              links: parentProject.links,
-            } : {
-              links: parentProject.links,
-            }}
+            } : undefined}
           />
           <DialogFooter>
             <Button type="submit" disabled={isPending}>
