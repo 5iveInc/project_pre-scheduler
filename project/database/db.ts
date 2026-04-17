@@ -33,6 +33,16 @@ async function initSchema() {
       user_id    INTEGER NOT NULL REFERENCES users(id)    ON DELETE CASCADE,
       PRIMARY KEY (project_id, user_id)
     );
+    CREATE TABLE IF NOT EXISTS project_stakeholders (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name       TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS project_child_stakeholders (
+      project_id     INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      stakeholder_id INTEGER NOT NULL REFERENCES project_stakeholders(id) ON DELETE CASCADE,
+      PRIMARY KEY (project_id, stakeholder_id)
+    );
     CREATE TABLE IF NOT EXISTS project_key_dates (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -65,6 +75,20 @@ async function initSchema() {
   // parent_id カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
   try {
     await client.execute("ALTER TABLE projects ADD COLUMN parent_id INTEGER REFERENCES projects(id) ON DELETE SET NULL")
+  } catch {
+    // 既にカラムが存在する場合は無視
+  }
+
+  // client_name カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
+  try {
+    await client.execute("ALTER TABLE projects ADD COLUMN client_name TEXT")
+  } catch {
+    // 既にカラムが存在する場合は無視
+  }
+
+  // assignee_type カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
+  try {
+    await client.execute("ALTER TABLE projects ADD COLUMN assignee_type TEXT NOT NULL DEFAULT '5ive'")
   } catch {
     // 既にカラムが存在する場合は無視
   }
@@ -136,17 +160,21 @@ export async function deleteUsers(ids: number[]): Promise<void> {
 
 export type KeyDate = { date: string; label: string }
 export type ProjectLink = { label: string; url: string }
+export type Stakeholder = { id: number; name: string }
 
 export type ProjectStatus = "相談中" | "受注済"
+export type AssigneeType = "5ive" | "client" | "stakeholder"
 
 export type Project = {
   id: number
   name: string
   status: ProjectStatus
+  client_name: string | null
   assignee_ids: number[]
   assignee_names: string[]
-  support_ids: number[]
-  support_names: string[]
+  assignee_type: AssigneeType
+  stakeholder_assignee_ids: number[]
+  stakeholders: Stakeholder[]
   start_date: string | null
   end_date: string | null
   memo: string | null
@@ -163,10 +191,12 @@ type RawProject = {
   id: number
   name: string
   status: string
+  client_name: string | null
+  assignee_type: string
   assignee_ids_str: string | null
   assignee_names_str: string | null
-  support_ids_str: string | null
-  support_names_str: string | null
+  stakeholder_assignee_ids_str: string | null
+  stakeholders_str: string | null
   start_date: string | null
   end_date: string | null
   memo: string | null
@@ -183,19 +213,29 @@ export async function getProjects(): Promise<Project[]> {
   const db = await getClient()
   const { rows } = await db.execute(`
     SELECT
-      p.id, p.name, p.status, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
-      p.parent_id,
+      p.id, p.name, p.status, p.client_name, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
+      p.parent_id, p.assignee_type,
       (SELECT COUNT(*) FROM projects c WHERE c.parent_id = p.id) AS has_children,
       (SELECT GROUP_CONCAT(pa.user_id)
        FROM project_assignees pa WHERE pa.project_id = p.id) AS assignee_ids_str,
-      (SELECT GROUP_CONCAT(u.name, '|||')
-       FROM project_assignees pa JOIN users u ON u.id = pa.user_id
-       WHERE pa.project_id = p.id) AS assignee_names_str,
-      (SELECT GROUP_CONCAT(ps.user_id)
-       FROM project_supports ps WHERE ps.project_id = p.id) AS support_ids_str,
-      (SELECT GROUP_CONCAT(u.name, '|||')
-       FROM project_supports ps JOIN users u ON u.id = ps.user_id
-       WHERE ps.project_id = p.id) AS support_names_str,
+      CASE
+        WHEN p.assignee_type = 'client' THEN 'クライアント'
+        WHEN p.assignee_type = 'stakeholder' THEN (
+          SELECT GROUP_CONCAT(s.name, '|||')
+          FROM project_child_stakeholders pcs
+          JOIN project_stakeholders s ON s.id = pcs.stakeholder_id
+          WHERE pcs.project_id = p.id
+        )
+        ELSE (
+          SELECT GROUP_CONCAT(u.name, '|||')
+          FROM project_assignees pa JOIN users u ON u.id = pa.user_id
+          WHERE pa.project_id = p.id
+        )
+      END AS assignee_names_str,
+      (SELECT GROUP_CONCAT(pcs.stakeholder_id)
+       FROM project_child_stakeholders pcs WHERE pcs.project_id = p.id) AS stakeholder_assignee_ids_str,
+      (SELECT json_group_array(json_object('id', s.id, 'name', s.name))
+       FROM project_stakeholders s WHERE s.project_id = p.id) AS stakeholders_str,
       (SELECT GROUP_CONCAT(kd.date || '|||' || kd.label, '~~~')
        FROM (SELECT date, label FROM project_key_dates WHERE project_id = p.id ORDER BY date ASC) kd) AS key_dates_str,
       (SELECT GROUP_CONCAT(pl.label || '|||' || pl.url, '~~~')
@@ -208,10 +248,12 @@ export async function getProjects(): Promise<Project[]> {
     id: row.id,
     name: row.name,
     status: (row.status === "受注済" ? "受注済" : "相談中") as ProjectStatus,
+    client_name: row.client_name,
+    assignee_type: (["5ive", "client", "stakeholder"].includes(row.assignee_type) ? row.assignee_type : "5ive") as AssigneeType,
     assignee_ids: row.assignee_ids_str ? row.assignee_ids_str.split(",").map(Number) : [],
     assignee_names: row.assignee_names_str ? row.assignee_names_str.split("|||") : [],
-    support_ids: row.support_ids_str ? row.support_ids_str.split(",").map(Number) : [],
-    support_names: row.support_names_str ? row.support_names_str.split("|||") : [],
+    stakeholder_assignee_ids: row.stakeholder_assignee_ids_str ? row.stakeholder_assignee_ids_str.split(",").map(Number) : [],
+    stakeholders: row.stakeholders_str ? JSON.parse(row.stakeholders_str) : [],
     start_date: row.start_date,
     end_date: row.end_date,
     memo: row.memo,
@@ -244,6 +286,16 @@ async function insertJunction(db: typeof client, table: string, projectId: numbe
   }
 }
 
+async function replaceChildStakeholders(db: typeof client, projectId: number | bigint, stakeholderIds: number[]) {
+  await db.execute({ sql: "DELETE FROM project_child_stakeholders WHERE project_id=?", args: [projectId] })
+  for (const sid of stakeholderIds) {
+    await db.execute({
+      sql: "INSERT OR IGNORE INTO project_child_stakeholders (project_id, stakeholder_id) VALUES (?, ?)",
+      args: [projectId, sid],
+    })
+  }
+}
+
 async function replaceLinks(db: typeof client, projectId: number | bigint, links: ProjectLink[]) {
   await db.execute({ sql: "DELETE FROM project_links WHERE project_id=?", args: [projectId] })
   for (const link of links) {
@@ -272,7 +324,7 @@ async function replaceKeyDates(db: typeof client, projectId: number | bigint, ke
 export async function addProject(
   name: string,
   assigneeIds: number[],
-  supportIds: number[],
+  clientName: string | null,
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
@@ -283,12 +335,11 @@ export async function addProject(
 ): Promise<void> {
   const db = await getClient()
   const result = await db.execute({
-    sql: "INSERT INTO projects (name, status, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?, ?)",
-    args: [name, status, startDate, endDate, memo, volume],
+    sql: "INSERT INTO projects (name, status, client_name, start_date, end_date, memo, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    args: [name, status, clientName, startDate, endDate, memo, volume],
   })
   const newId = result.lastInsertRowid!
   await insertJunction(db, "project_assignees", newId, assigneeIds)
-  await insertJunction(db, "project_supports", newId, supportIds)
   await replaceKeyDates(db, newId, keyDates)
   await replaceLinks(db, newId, links)
 }
@@ -297,7 +348,6 @@ export async function addChildProject(
   parentId: number,
   name: string,
   assigneeIds: number[],
-  supportIds: number[],
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
@@ -305,15 +355,17 @@ export async function addChildProject(
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
   links: ProjectLink[] = [],
+  assigneeType: AssigneeType = "5ive",
+  stakeholderAssigneeIds: number[] = [],
 ): Promise<void> {
   const db = await getClient()
   const result = await db.execute({
-    sql: "INSERT INTO projects (name, status, start_date, end_date, memo, volume, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    args: [name, status, startDate, endDate, memo, volume, parentId],
+    sql: "INSERT INTO projects (name, status, start_date, end_date, memo, volume, parent_id, assignee_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    args: [name, status, startDate, endDate, memo, volume, parentId, assigneeType],
   })
   const newId = result.lastInsertRowid!
-  await insertJunction(db, "project_assignees", newId, assigneeIds)
-  await insertJunction(db, "project_supports", newId, supportIds)
+  if (assigneeType === "5ive") await insertJunction(db, "project_assignees", newId, assigneeIds)
+  if (assigneeType === "stakeholder") await replaceChildStakeholders(db, newId, stakeholderAssigneeIds)
   await replaceKeyDates(db, newId, keyDates)
   // リンクは親単位で管理
   await replaceLinks(db, parentId, links)
@@ -323,7 +375,7 @@ export async function updateProject(
   id: number,
   name: string,
   assigneeIds: number[],
-  supportIds: number[],
+  clientName: string | null,
   startDate: string | null,
   endDate: string | null,
   memo: string | null,
@@ -331,21 +383,37 @@ export async function updateProject(
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
   links: ProjectLink[] = [],
+  assigneeType: AssigneeType = "5ive",
+  stakeholderAssigneeIds: number[] = [],
 ): Promise<void> {
   const db = await getClient()
   await db.execute({
-    sql: "UPDATE projects SET name=?, status=?, start_date=?, end_date=?, memo=?, volume=? WHERE id=?",
-    args: [name, status, startDate, endDate, memo, volume, id],
+    sql: "UPDATE projects SET name=?, status=?, client_name=?, start_date=?, end_date=?, memo=?, volume=?, assignee_type=? WHERE id=?",
+    args: [name, status, clientName, startDate, endDate, memo, volume, assigneeType, id],
   })
   await db.execute({ sql: "DELETE FROM project_assignees WHERE project_id=?", args: [id] })
-  await db.execute({ sql: "DELETE FROM project_supports WHERE project_id=?", args: [id] })
-  await insertJunction(db, "project_assignees", id, assigneeIds)
-  await insertJunction(db, "project_supports", id, supportIds)
+  if (assigneeType === "5ive") await insertJunction(db, "project_assignees", id, assigneeIds)
+  await replaceChildStakeholders(db, id, assigneeType === "stakeholder" ? stakeholderAssigneeIds : [])
   await replaceKeyDates(db, id, keyDates)
   // リンクは親単位で管理（子タスクの場合は親IDに保存）
   const { rows: parentRows } = await db.execute({ sql: "SELECT parent_id FROM projects WHERE id=?", args: [id] })
   const parentId = (parentRows[0] as unknown as { parent_id: number | null })?.parent_id ?? null
   await replaceLinks(db, parentId ?? id, links)
+}
+
+export async function addStakeholder(projectId: number, name: string): Promise<Stakeholder> {
+  const db = await getClient()
+  const result = await db.execute({
+    sql: "INSERT INTO project_stakeholders (project_id, name) VALUES (?, ?)",
+    args: [projectId, name],
+  })
+  return { id: Number(result.lastInsertRowid!), name }
+}
+
+export async function removeStakeholder(id: number): Promise<void> {
+  const db = await getClient()
+  await db.execute({ sql: "DELETE FROM project_child_stakeholders WHERE stakeholder_id=?", args: [id] })
+  await db.execute({ sql: "DELETE FROM project_stakeholders WHERE id=?", args: [id] })
 }
 
 export async function updateProjectDates(
@@ -364,7 +432,24 @@ export async function deleteProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  // 子タスクも削除（外部キー制約が無効のため明示的に削除）
+
+  // 子タスクのIDを取得（関連データ削除に必要）
+  const { rows: childRows } = await db.execute({
+    sql: `SELECT id FROM projects WHERE parent_id IN (${placeholders})`,
+    args: ids,
+  })
+  const childIds = (childRows as unknown as { id: number }[]).map((r) => r.id)
+  const allIds = [...ids, ...childIds]
+  const allPlaceholders = allIds.map(() => "?").join(", ")
+
+  if (allIds.length > 0) {
+    await db.execute({ sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds })
+    await db.execute({ sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds })
+  }
+
   await db.execute({ sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids })
   await db.execute({ sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids })
 }

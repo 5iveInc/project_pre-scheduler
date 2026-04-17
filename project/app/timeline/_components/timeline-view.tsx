@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon, ChevronRightIcon } from "lucide-react"
 import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
 
@@ -64,6 +65,12 @@ function barColorFromParentVolume(volume: number | null): string {
 
 function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
+  if (p.parent_id !== null) {
+    if (p.assignee_type === "client") return "#f87171" // red-400
+    if (p.assignee_type === "stakeholder") {
+      return p.stakeholder_assignee_ids.length === 0 ? "#000000" : "#fde047" // black : yellow-300
+    }
+  }
   if (!ignoreChildren && p.has_children) return barColorFromParentVolume(p.volume)
   return barColorFromVolume(p.volume)
 }
@@ -281,6 +288,49 @@ function calcLanes(projectList: Project[]): {
   return { assignments, laneCount: Math.max(1, laneEnds.length) }
 }
 
+// ── 営業日計算 ─────────────────────────────────────────────
+function calcBusinessDays(startDate: string, endDate: string, offDaySet: Set<string>): number {
+  const s = parseLocalDate(startDate)
+  const e = parseLocalDate(endDate)
+  let count = 0
+  const cur = new Date(s)
+  while (cur <= e) {
+    if (cur.getDay() !== 0 && cur.getDay() !== 6) {
+      const ymd = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}-${String(cur.getDate()).padStart(2, "0")}`
+      if (!offDaySet.has(ymd)) count++
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  return count
+}
+
+function BarHoverCardContent({ project, offDaySet }: { project: Project; offDaySet: Set<string> }) {
+  const assigneeDisplay = project.assignee_names.length > 0 ? project.assignee_names.join("、") : "未設定"
+  const businessDays = project.start_date && project.end_date
+    ? calcBusinessDays(project.start_date, project.end_date, offDaySet)
+    : null
+  return (
+    <div className="space-y-1.5 text-xs">
+      <div>
+        <span className="font-semibold">担当者：</span>
+        <span>{assigneeDisplay}</span>
+      </div>
+      {businessDays !== null && (
+        <div>
+          <span className="font-semibold">営業日：</span>
+          <span>{businessDays}日</span>
+        </div>
+      )}
+      {project.memo && (
+        <div>
+          <div className="font-semibold">メモ：</div>
+          <div className="whitespace-pre-line mt-0.5">{project.memo}</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── タイムラインビュー ──────────────────────────────────────
 
 export function TimelineView({
@@ -420,7 +470,6 @@ export function TimelineView({
   }
 
   const [editProject, setEditProject] = useState<Project | null>(null)
-  const [memoTooltip, setMemoTooltip] = useState<{ memo: string; x: number; y: number } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
@@ -835,23 +884,31 @@ export function TimelineView({
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
                         {parentBarInfo && (
-                          <div
-                            className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                            style={{
-                              left: `${parentBarInfo.leftPct}%`,
-                              width: `${parentBarInfo.widthPct}%`,
-                              top: 10,
-                              bottom: 10,
-                              backgroundColor: parentBarColor,
-                            }}
-                            onClick={() => setEditProject(p)}
-                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
-                          >
-                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
-                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
+                          <HoverCard>
+                            <HoverCardTrigger
+                              delay={400}
+                              render={
+                                <div
+                                  className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                  style={{
+                                    left: `${parentBarInfo.leftPct}%`,
+                                    width: `${parentBarInfo.widthPct}%`,
+                                    top: 10,
+                                    bottom: 10,
+                                    backgroundColor: parentBarColor,
+                                  }}
+                                  onClick={() => setEditProject(p)}
+                                />
+                              }
+                            >
+                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
+                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </HoverCardTrigger>
+                            <HoverCardContent side="top" align="start">
+                              <BarHoverCardContent project={p} offDaySet={holidaySet} />
+                            </HoverCardContent>
+                          </HoverCard>
                         )}
                         {parentKeyDates.map(([date, labels]) => {
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
@@ -881,25 +938,33 @@ export function TimelineView({
                             const barInfo = calcMonthViewBar(c, monthViewMonths)
                             if (!barInfo) return null
                             const barColor = barColorFromProject(c, true)
+                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
-                              <div
-                                key={c.id}
-                                className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                style={{
-                                  left: `${barInfo.leftPct}%`,
-                                  width: `${barInfo.widthPct}%`,
-                                  top: 10,
-                                  bottom: 10,
-                                  backgroundColor: barColor,
-                                }}
-                                onClick={() => setEditProject(c)}
-                                onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                                onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
-                              >
-                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
-                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
+                              <HoverCard key={c.id}>
+                                <HoverCardTrigger
+                                  delay={400}
+                                  render={
+                                    <div
+                                      className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                      style={{
+                                        left: `${barInfo.leftPct}%`,
+                                        width: `${barInfo.widthPct}%`,
+                                        top: 10,
+                                        bottom: 10,
+                                        backgroundColor: barColor,
+                                      }}
+                                      onClick={() => setEditProject(c)}
+                                    />
+                                  }
+                                >
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                </HoverCardTrigger>
+                                <HoverCardContent side="top" align="start">
+                                  <BarHoverCardContent project={c} offDaySet={holidaySet} />
+                                </HoverCardContent>
+                              </HoverCard>
                             )
                           })}
                         </div>
@@ -1081,17 +1146,25 @@ export function TimelineView({
                           <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                         ))}
                         {parentBarLeft !== null && parentBarWidth !== null && (
-                          <div
-                            className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                            style={{ left: parentBarLeft, width: parentBarWidth, top: 10, bottom: 10, backgroundColor: parentBarColor }}
-                            onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p)) }}
-                            onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                            onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
-                          >
-                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", p, e, scrollRef.current) }} />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
-                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", p, e, scrollRef.current) }} />
-                          </div>
+                          <HoverCard>
+                            <HoverCardTrigger
+                              delay={400}
+                              render={
+                                <div
+                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                  style={{ left: parentBarLeft, width: parentBarWidth, top: 10, bottom: 10, backgroundColor: parentBarColor }}
+                                  onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p)) }}
+                                />
+                              }
+                            >
+                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", p, e, scrollRef.current) }} />
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
+                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", p, e, scrollRef.current) }} />
+                            </HoverCardTrigger>
+                            <HoverCardContent side="top" align="start">
+                              <BarHoverCardContent project={p} offDaySet={holidaySet} />
+                            </HoverCardContent>
+                          </HoverCard>
                         )}
                         {allKeyDatesForParentDay.map(([date, labels]) => {
                           const kdIdx = dayDiff(start, parseLocalDate(date))
@@ -1129,19 +1202,27 @@ export function TimelineView({
                             const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                             const barColor = barColorFromProject(c, true)
                             const isThisDragging = barDrag.draggingId === c.id
+                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
-                              <div
-                                key={c.id}
-                                className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
-                                onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current, () => setEditProject(c)) }}
-                                onMouseMove={c.memo ? (e) => setMemoTooltip({ memo: c.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                                onMouseLeave={c.memo ? () => setMemoTooltip(null) : undefined}
-                              >
-                                <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
-                                <span className="px-2 text-xs text-white font-medium truncate leading-none">{c.name}</span>
-                                <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
-                              </div>
+                              <HoverCard key={c.id}>
+                                <HoverCardTrigger
+                                  delay={400}
+                                  render={
+                                    <div
+                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                      style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
+                                      onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current, () => setEditProject(c)) }}
+                                    />
+                                  }
+                                >
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                                </HoverCardTrigger>
+                                <HoverCardContent side="top" align="start">
+                                  <BarHoverCardContent project={c} offDaySet={holidaySet} />
+                                </HoverCardContent>
+                              </HoverCard>
                             )
                           })}
                         </div>
@@ -1170,6 +1251,7 @@ export function TimelineView({
         const filteredProjects = projects
           .filter((p) => !showOrderedOnly || p.status === "受注済")
           .filter((p) => !hideParentBars || !p.has_children)
+          .filter((p) => p.parent_id === null || p.assignee_type === "5ive")
         const assigneeUsers = users.filter((u) =>
           filteredProjects.some((p) => p.assignee_ids.includes(u.id))
         )
@@ -1382,25 +1464,33 @@ export function TimelineView({
                               )
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                    style={{
-                                      left: `${barInfo.leftPct}%`,
-                                      width: `${barInfo.widthPct}%`,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onClick={() => setEditProject(p)}
-                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
-                                  >
-                                    <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                                    </span>
-                                    <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  </div>
+                                  <HoverCard>
+                                    <HoverCardTrigger
+                                      delay={400}
+                                      render={
+                                        <div
+                                          className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                          style={{
+                                            left: `${barInfo.leftPct}%`,
+                                            width: `${barInfo.widthPct}%`,
+                                            top: barTop,
+                                            height: barHeight,
+                                            backgroundColor: barColorFromProject(p),
+                                          }}
+                                          onClick={() => setEditProject(p)}
+                                        />
+                                      }
+                                    >
+                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                      </span>
+                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </HoverCardTrigger>
+                                    <HoverCardContent side="top" align="start">
+                                      <BarHoverCardContent project={p} offDaySet={new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])])} />
+                                    </HoverCardContent>
+                                  </HoverCard>
                                   {keyDateEntries.map(([date, labels]) => {
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                                     if (centerPct === null) return null
@@ -1603,40 +1693,48 @@ export function TimelineView({
                               const isThisDragging = barDrag.draggingId === p.id
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                    style={{
-                                      left: barLeft,
-                                      width: barWidth,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onMouseDown={(e) => {
-                                      if (!assignScrollRef.current) return
-                                      barDrag.startDrag("move", p, e, assignScrollRef.current, () => setEditProject(p))
-                                    }}
-                                    onMouseMove={p.memo ? (e) => setMemoTooltip({ memo: p.memo!, x: e.clientX, y: e.clientY }) : undefined}
-                                    onMouseLeave={p.memo ? () => setMemoTooltip(null) : undefined}
-                                  >
-                                    <div
-                                      className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
-                                      onMouseDown={(e) => {
-                                        if (!assignScrollRef.current) return
-                                        barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
-                                      }}
-                                    />
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                                    </span>
-                                    <div
-                                      className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
-                                      onMouseDown={(e) => {
-                                        if (!assignScrollRef.current) return
-                                        barDrag.startDrag("resize-end", p, e, assignScrollRef.current)
-                                      }}
-                                    />
-                                  </div>
+                                  <HoverCard>
+                                    <HoverCardTrigger
+                                      delay={400}
+                                      render={
+                                        <div
+                                          className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                          style={{
+                                            left: barLeft,
+                                            width: barWidth,
+                                            top: barTop,
+                                            height: barHeight,
+                                            backgroundColor: barColorFromProject(p),
+                                          }}
+                                          onMouseDown={(e) => {
+                                            if (!assignScrollRef.current) return
+                                            barDrag.startDrag("move", p, e, assignScrollRef.current, () => setEditProject(p))
+                                          }}
+                                        />
+                                      }
+                                    >
+                                      <div
+                                        className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                        onMouseDown={(e) => {
+                                          if (!assignScrollRef.current) return
+                                          barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
+                                        }}
+                                      />
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                      </span>
+                                      <div
+                                        className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                        onMouseDown={(e) => {
+                                          if (!assignScrollRef.current) return
+                                          barDrag.startDrag("resize-end", p, e, assignScrollRef.current)
+                                        }}
+                                      />
+                                    </HoverCardTrigger>
+                                    <HoverCardContent side="top" align="start">
+                                      <BarHoverCardContent project={p} offDaySet={new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])])} />
+                                    </HoverCardContent>
+                                  </HoverCard>
                                   {/* 日付メモの赤丸 */}
                                   {Object.entries(
                                     p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
@@ -1827,15 +1925,6 @@ export function TimelineView({
           </form>
         </DialogContent>
       </Dialog>
-      {/* メモのカーソル追従ツールチップ */}
-      {memoTooltip && (
-        <div
-          className="fixed z-50 pointer-events-none rounded-md bg-foreground px-3 py-1.5 text-xs text-background shadow-md max-w-xs"
-          style={{ left: memoTooltip.x + 12, top: memoTooltip.y + 16 }}
-        >
-          <span className="whitespace-pre-line">{memoTooltip.memo}</span>
-        </div>
-      )}
     </TooltipProvider>
   )
 }
