@@ -358,6 +358,8 @@ export function TimelineView({
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const assignScrollRef = useRef<HTMLDivElement>(null)
+  const projectHeaderScrollRef = useRef<HTMLDivElement>(null)
+  const assignHeaderScrollRef = useRef<HTMLDivElement>(null)
 
   // ── 表示モード（月 / 日）──
   const [viewMode, setViewMode] = useState<"month" | "day">("day")
@@ -368,6 +370,7 @@ export function TimelineView({
 
   // ── 月ビュー：列幅（1画面に6ヶ月）──
   const monthViewScrollRef = useRef<HTMLDivElement>(null)
+  const monthViewHeaderScrollRef = useRef<HTMLDivElement>(null)
   const [monthColWidth, setMonthColWidth] = useState(160)
   const monthViewScrollInitialized = useRef(false)
 
@@ -380,9 +383,11 @@ export function TimelineView({
   useEffect(() => {
     if (scrollRef.current && todayIndex > 0) {
       scrollRef.current.scrollLeft = todayIndex * dayWidth
+      if (projectHeaderScrollRef.current) projectHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     if (assignScrollRef.current && todayIndex > 0) {
       assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+      if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     // dayWidth 変化時は再スクロールしない（意図した表示位置を保持）
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -433,9 +438,11 @@ export function TimelineView({
     if (todayIndex <= 0) return
     if (activeTab === "project" && scrollRef.current) {
       scrollRef.current.scrollLeft = todayIndex * dayWidth
+      if (projectHeaderScrollRef.current) projectHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     if (activeTab === "assign" && assignScrollRef.current) {
       assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+      if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab])
@@ -451,6 +458,7 @@ export function TimelineView({
         monthViewScrollInitialized.current = true
         // monthViewMonths[0] = 前月、[1] = 現在月 なので index=1 にスクロール
         el.scrollLeft = 1 * colWidth
+        if (monthViewHeaderScrollRef.current) monthViewHeaderScrollRef.current.scrollLeft = 1 * colWidth
       }
     })
     ro.observe(el)
@@ -787,11 +795,12 @@ export function TimelineView({
 
       {viewMode === "month" ? (
         /* ── 月ビュー（案件タブ） ── */
-        <div className="rounded-lg border overflow-hidden bg-background">
-          <div className="flex">
+        <div className="rounded-lg border [overflow:clip] bg-background">
+          {/* ── Sticky ヘッダー ── */}
+          <div className="sticky top-0 z-20 flex bg-background">
             <div
               style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-              className="shrink-0 border-r bg-background z-10"
+              className="shrink-0 border-r bg-background"
             >
               <div
                 style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}
@@ -799,6 +808,31 @@ export function TimelineView({
               >
                 案件名
               </div>
+            </div>
+            {/* 右ヘッダー（横スクロールなし・ボディとJS同期） */}
+            <div ref={monthViewHeaderScrollRef} className="overflow-x-hidden flex-1">
+              <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
+                <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                  {monthViewMonths.map((m) => (
+                    <div
+                      key={m.label}
+                      style={{ width: monthColWidth, minWidth: monthColWidth }}
+                      className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                    >
+                      {m.label}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── ボディ ── */}
+          <div className="flex">
+            <div
+              style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+              className="shrink-0 border-r bg-background z-10"
+            >
               {projectTabProjects.length === 0 ? (
                 <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
                   案件なし
@@ -839,19 +873,16 @@ export function TimelineView({
                 })
               )}
             </div>
-            <div ref={monthViewScrollRef} className="overflow-x-auto flex-1">
+            <div
+              ref={monthViewScrollRef}
+              className="overflow-x-auto flex-1"
+              onScroll={(e) => {
+                if (monthViewHeaderScrollRef.current) {
+                  monthViewHeaderScrollRef.current.scrollLeft = e.currentTarget.scrollLeft
+                }
+              }}
+            >
               <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
-                <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
-                  {monthViewMonths.map((m) => (
-                    <div
-                      key={m.label}
-                      style={{ width: monthColWidth, minWidth: monthColWidth }}
-                      className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
-                    >
-                      {m.label}
-                    </div>
-                  ))}
-                </div>
                 {projectTabProjects.length === 0 ? (
                   <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                     案件がありません。「案件一覧」から登録してください。
@@ -963,25 +994,80 @@ export function TimelineView({
         </div>
       ) : (
         /* ── 日ビュー（案件タブ） ── */
-        <div className="rounded-lg border overflow-hidden bg-background">
-          <div className="flex">
-            {/* ── 左固定列 ── */}
+        <div className="rounded-lg border [overflow:clip] bg-background">
+          {/* ── Sticky ヘッダー（月・日行） ── */}
+          <div className="sticky top-0 z-20 flex bg-background">
+            {/* 左ヘッダー */}
             <div
               style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-              className="shrink-0 border-r bg-background z-10"
+              className="shrink-0 border-r bg-background"
             >
-              {/* 月ヘッダー行の高さ合わせ */}
-              <div
-                style={{ height: MONTH_HEADER_HEIGHT }}
-                className="border-b bg-muted/40"
-              />
-              {/* 日ヘッダー行の高さ合わせ */}
+              <div style={{ height: MONTH_HEADER_HEIGHT }} className="border-b bg-muted/40" />
               <div
                 style={{ height: DAY_HEADER_HEIGHT }}
                 className="border-b bg-muted/40 flex items-center px-3 text-xs font-semibold text-muted-foreground"
               >
                 案件名
               </div>
+            </div>
+            {/* 右ヘッダー（横スクロールなし・ボディとJS同期） */}
+            <div ref={projectHeaderScrollRef} className="overflow-x-hidden flex-1">
+              <div style={{ width: totalWidth, minWidth: totalWidth }}>
+                {/* 月ヘッダー */}
+                <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
+                  {monthGroups.map((mg, i) => (
+                    <div
+                      key={i}
+                      style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
+                      className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                    >
+                      {mg.label}
+                    </div>
+                  ))}
+                </div>
+                {/* 日ヘッダー */}
+                <div
+                  className="flex border-b select-none cursor-ew-resize"
+                  style={{ height: DAY_HEADER_HEIGHT }}
+                  onMouseDown={handleDayHeaderMouseDown}
+                >
+                  {dates.map((d, i) => {
+                    const isToday = i === todayIndex
+                    const isHighlighted = highlightedDateIndices.has(i)
+                    return (
+                      <div
+                        key={i}
+                        style={{ width: dayWidth, minWidth: dayWidth }}
+                        className={[
+                          "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
+                          isToday
+                            ? "bg-green-500 text-white"
+                            : isHighlighted
+                            ? "bg-yellow-300 text-foreground"
+                            : isRestDay(d)
+                            ? "bg-gray-300 text-muted-foreground"
+                            : "text-muted-foreground",
+                        ].join(" ")}
+                      >
+                        <span>{d.getDate()}</span>
+                        {dayWidth >= 24 && (
+                          <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── ボディ ── */}
+          <div className="flex">
+            {/* ── 左固定列 ── */}
+            <div
+              style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+              className="shrink-0 border-r bg-background z-10"
+            >
               {/* 案件行 */}
               {projects.length === 0 ? (
                 <div
@@ -1028,54 +1114,16 @@ export function TimelineView({
             </div>
 
             {/* ── 右スクロール領域 ── */}
-            <div ref={scrollRef} className="overflow-x-auto flex-1">
+            <div
+              ref={scrollRef}
+              className="overflow-x-auto flex-1"
+              onScroll={(e) => {
+                if (projectHeaderScrollRef.current) {
+                  projectHeaderScrollRef.current.scrollLeft = e.currentTarget.scrollLeft
+                }
+              }}
+            >
               <div style={{ width: totalWidth, minWidth: totalWidth }}>
-
-                {/* 月ヘッダー */}
-                <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
-                  {monthGroups.map((mg, i) => (
-                    <div
-                      key={i}
-                      style={{ width: mg.days * dayWidth, minWidth: mg.days * dayWidth }}
-                      className="border-b border-r last:border-r-0 flex items-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
-                    >
-                      {mg.label}
-                    </div>
-                  ))}
-                </div>
-
-                {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
-                <div
-                  className="flex border-b select-none cursor-ew-resize"
-                  style={{ height: DAY_HEADER_HEIGHT }}
-                  onMouseDown={handleDayHeaderMouseDown}
-                >
-                  {dates.map((d, i) => {
-                    const isToday = i === todayIndex
-                    const isHighlighted = highlightedDateIndices.has(i)
-                    return (
-                      <div
-                        key={i}
-                        style={{ width: dayWidth, minWidth: dayWidth }}
-                        className={[
-                          "border-r last:border-r-0 flex flex-col items-center justify-center text-[10px] font-medium leading-tight overflow-hidden",
-                          isToday
-                            ? "bg-green-500 text-white"
-                            : isHighlighted
-                            ? "bg-yellow-300 text-foreground"
-                            : isRestDay(d)
-                            ? "bg-gray-300 text-muted-foreground"
-                            : "text-muted-foreground",
-                        ].join(" ")}
-                      >
-                        <span>{d.getDate()}</span>
-                        {dayWidth >= 24 && (
-                          <span>{["(日)", "(月)", "(火)", "(水)", "(木)", "(金)", "(土)"][d.getDay()]}</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
 
                 {/* 案件行 */}
                 {projects.length === 0 ? (
@@ -1358,11 +1406,12 @@ export function TimelineView({
 
             {viewMode === "month" ? (
               /* ── 月ビュー（担当タブ） ── */
-              <div className="rounded-lg border overflow-hidden bg-background">
-                <div className="flex">
+              <div className="rounded-lg border [overflow:clip] bg-background">
+                {/* ── Sticky ヘッダー ── */}
+                <div className="sticky top-0 z-20 flex bg-background">
                   <div
                     style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-                    className="shrink-0 border-r bg-background z-10"
+                    className="shrink-0 border-r bg-background"
                   >
                     <div
                       style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}
@@ -1370,6 +1419,31 @@ export function TimelineView({
                     >
                       担当者
                     </div>
+                  </div>
+                  {/* 右ヘッダー（横スクロールなし・ボディとJS同期） */}
+                  <div ref={monthViewHeaderScrollRef} className="overflow-x-hidden flex-1">
+                    <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
+                      <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
+                        {monthViewMonths.map((m) => (
+                          <div
+                            key={m.label}
+                            style={{ width: monthColWidth, minWidth: monthColWidth }}
+                            className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
+                          >
+                            {m.label}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ボディ ── */}
+                <div className="flex">
+                  <div
+                    style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+                    className="shrink-0 border-r bg-background z-10"
+                  >
                     {userLaneData.length === 0 ? (
                       <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
                         担当者なし
@@ -1393,19 +1467,16 @@ export function TimelineView({
                       ))
                     )}
                   </div>
-                  <div ref={monthViewScrollRef} className="overflow-x-auto flex-1">
+                  <div
+                    ref={monthViewScrollRef}
+                    className="overflow-x-auto flex-1"
+                    onScroll={(e) => {
+                      if (monthViewHeaderScrollRef.current) {
+                        monthViewHeaderScrollRef.current.scrollLeft = e.currentTarget.scrollLeft
+                      }
+                    }}
+                  >
                     <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
-                      <div className="flex border-b" style={{ height: MONTH_HEADER_HEIGHT + DAY_HEADER_HEIGHT }}>
-                        {monthViewMonths.map((m) => (
-                          <div
-                            key={m.label}
-                            style={{ width: monthColWidth, minWidth: monthColWidth }}
-                            className="border-r last:border-r-0 flex items-center justify-center px-2 text-xs font-semibold bg-muted/40 text-foreground"
-                          >
-                            {m.label}
-                          </div>
-                        ))}
-                      </div>
                       {userLaneData.length === 0 ? (
                         <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                           担当者が割り当てられた案件がありません。
@@ -1486,12 +1557,13 @@ export function TimelineView({
               </div>
             ) : (
               /* ── 日ビュー（担当タブ） ── */
-              <div className="rounded-lg border overflow-hidden bg-background">
-                <div className="flex">
-                  {/* 左固定列 */}
+              <div className="rounded-lg border [overflow:clip] bg-background">
+                {/* ── Sticky ヘッダー（月・日行） ── */}
+                <div className="sticky top-0 z-20 flex bg-background">
+                  {/* 左ヘッダー */}
                   <div
                     style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
-                    className="shrink-0 border-r bg-background z-10"
+                    className="shrink-0 border-r bg-background"
                   >
                     <div style={{ height: MONTH_HEADER_HEIGHT }} className="border-b bg-muted/40" />
                     <div
@@ -1500,34 +1572,10 @@ export function TimelineView({
                     >
                       担当者
                     </div>
-                    {userLaneData.length === 0 ? (
-                      <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
-                        担当者なし
-                      </div>
-                    ) : (
-                      userLaneData.map(({ user: u, rowHeight }) => (
-                        <div
-                          key={u.id}
-                          style={{ height: rowHeight }}
-                          className="w-full border-b border-black last:border-b-0 flex items-center px-3 gap-1"
-                        >
-                          <span className="text-sm font-medium truncate flex-1">{u.name}</span>
-                          <button
-                            type="button"
-                            className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
-                            onClick={() => openUserSettings(u.id)}
-                          >
-                            <Settings2Icon className="size-3.5" />
-                          </button>
-                        </div>
-                      ))
-                    )}
                   </div>
-
-                  {/* 右スクロール領域 */}
-                  <div ref={assignScrollRef} className="overflow-x-auto flex-1">
+                  {/* 右ヘッダー（横スクロールなし・ボディとJS同期） */}
+                  <div ref={assignHeaderScrollRef} className="overflow-x-hidden flex-1">
                     <div style={{ width: totalWidth, minWidth: totalWidth }}>
-
                       {/* 月ヘッダー */}
                       <div className="flex" style={{ height: MONTH_HEADER_HEIGHT }}>
                         {monthGroups.map((mg, i) => (
@@ -1540,8 +1588,7 @@ export function TimelineView({
                           </div>
                         ))}
                       </div>
-
-                      {/* 日ヘッダー（←→ドラッグで日幅を変更） */}
+                      {/* 日ヘッダー */}
                       <div
                         className="flex border-b select-none cursor-ew-resize"
                         style={{ height: DAY_HEADER_HEIGHT }}
@@ -1573,6 +1620,52 @@ export function TimelineView({
                           )
                         })}
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── ボディ ── */}
+                <div className="flex">
+                  {/* 左固定列 */}
+                  <div
+                    style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
+                    className="shrink-0 border-r bg-background z-10"
+                  >
+                    {userLaneData.length === 0 ? (
+                      <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                        担当者なし
+                      </div>
+                    ) : (
+                      userLaneData.map(({ user: u, rowHeight }) => (
+                        <div
+                          key={u.id}
+                          style={{ height: rowHeight }}
+                          className="w-full border-b border-black last:border-b-0 flex items-center px-3 gap-1"
+                        >
+                          <span className="text-sm font-medium truncate flex-1">{u.name}</span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-muted-foreground hover:text-primary transition-colors"
+                            onClick={() => openUserSettings(u.id)}
+                          >
+                            <Settings2Icon className="size-3.5" />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* 右スクロール領域 */}
+                  <div
+                    ref={assignScrollRef}
+                    className="overflow-x-auto flex-1"
+                    onScroll={(e) => {
+                      if (assignHeaderScrollRef.current) {
+                        assignHeaderScrollRef.current.scrollLeft = e.currentTarget.scrollLeft
+                      }
+                    }}
+                  >
+                    <div style={{ width: totalWidth, minWidth: totalWidth }}>
 
                       {/* 担当者行 */}
                       {userLaneData.length === 0 ? (
