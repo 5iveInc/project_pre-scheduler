@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon, ChevronRightIcon } from "lucide-react"
 import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
 
@@ -915,23 +916,28 @@ export function TimelineView({
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
                         {parentBarInfo && (
-                          <div
-                            className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                            style={{
-                              left: `${parentBarInfo.leftPct}%`,
-                              width: `${parentBarInfo.widthPct}%`,
-                              top: 10,
-                              bottom: 10,
-                              backgroundColor: parentBarColor,
-                            }}
-                            onClick={() => setEditProject(p)}
-                            onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
-                            onMouseLeave={() => setBarHoverCard(null)}
-                          >
-                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
-                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </div>
+                          <ContextMenu>
+                            <ContextMenuTrigger
+                              className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                              style={{
+                                left: `${parentBarInfo.leftPct}%`,
+                                width: `${parentBarInfo.widthPct}%`,
+                                top: 10,
+                                bottom: 10,
+                                backgroundColor: parentBarColor,
+                              }}
+                              onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                              onMouseLeave={() => setBarHoverCard(null)}
+                            >
+                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
+                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
+                              {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                            </ContextMenuContent>
+                          </ContextMenu>
                         )}
                         {parentKeyDates.map(([date, labels]) => {
                           const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
@@ -963,24 +969,27 @@ export function TimelineView({
                             const barColor = barColorFromProject(c, true)
                             const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
-                              <div
-                                key={c.id}
-                                className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                style={{
-                                  left: `${barInfo.leftPct}%`,
-                                  width: `${barInfo.widthPct}%`,
-                                  top: 10,
-                                  bottom: 10,
-                                  backgroundColor: barColor,
-                                }}
-                                onClick={() => setEditProject(c)}
-                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
-                                onMouseLeave={() => setBarHoverCard(null)}
-                              >
-                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
-                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
-                              </div>
+                              <ContextMenu key={c.id}>
+                                <ContextMenuTrigger
+                                  className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                  style={{
+                                    left: `${barInfo.leftPct}%`,
+                                    width: `${barInfo.widthPct}%`,
+                                    top: 10,
+                                    bottom: 10,
+                                    backgroundColor: barColor,
+                                  }}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  onMouseLeave={() => setBarHoverCard(null)}
+                                >
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
                             )
                           })}
                         </div>
@@ -1179,17 +1188,23 @@ export function TimelineView({
                           <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                         ))}
                         {parentBarLeft !== null && parentBarWidth !== null && (
-                          <div
-                            className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                            style={{ left: parentBarLeft, width: parentBarWidth, top: 10, bottom: 10, backgroundColor: parentBarColor }}
-                            onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", p, e, scrollRef.current, () => setEditProject(p)) }}
-                            onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
-                            onMouseLeave={() => setBarHoverCard(null)}
-                          >
-                            <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", p, e, scrollRef.current) }} />
-                            <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
-                            <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", p, e, scrollRef.current) }} />
-                          </div>
+                          <ContextMenu>
+                            <ContextMenuTrigger
+                              className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                              style={{ left: parentBarLeft, width: parentBarWidth, top: 10, bottom: 10, backgroundColor: parentBarColor }}
+                              onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", p, e, scrollRef.current) }}
+                              onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                              onMouseLeave={() => setBarHoverCard(null)}
+                            >
+                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", p, e, scrollRef.current) }} />
+                              <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
+                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", p, e, scrollRef.current) }} />
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
+                              {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                            </ContextMenuContent>
+                          </ContextMenu>
                         )}
                         {allKeyDatesForParentDay.map(([date, labels]) => {
                           const kdIdx = dayDiff(start, parseLocalDate(date))
@@ -1229,18 +1244,22 @@ export function TimelineView({
                             const isThisDragging = barDrag.draggingId === c.id
                             const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
                             return (
-                              <div
-                                key={c.id}
-                                className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
-                                onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current, () => setEditProject(c)) }}
-                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
-                                onMouseLeave={() => setBarHoverCard(null)}
-                              >
-                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
-                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
-                              </div>
+                              <ContextMenu key={c.id}>
+                                <ContextMenuTrigger
+                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                  style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
+                                  onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current) }}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  onMouseLeave={() => setBarHoverCard(null)}
+                                >
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                  <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                </ContextMenuContent>
+                              </ContextMenu>
                             )
                           })}
                         </div>
@@ -1505,25 +1524,30 @@ export function TimelineView({
                               )
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className="group absolute rounded-md cursor-pointer hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
-                                    style={{
-                                      left: `${barInfo.leftPct}%`,
-                                      width: `${barInfo.widthPct}%`,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onClick={() => setEditProject(p)}
-                                    onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
-                                    onMouseLeave={() => setBarHoverCard(null)}
-                                  >
-                                    <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                                    </span>
-                                    <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  </div>
+                                  <ContextMenu>
+                                    <ContextMenuTrigger
+                                      className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                      style={{
+                                        left: `${barInfo.leftPct}%`,
+                                        width: `${barInfo.widthPct}%`,
+                                        top: barTop,
+                                        height: barHeight,
+                                        backgroundColor: barColorFromProject(p),
+                                      }}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
+                                      onMouseLeave={() => setBarHoverCard(null)}
+                                    >
+                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                      </span>
+                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </ContextMenuTrigger>
+                                    <ContextMenuContent>
+                                      <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
+                                      {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                                    </ContextMenuContent>
+                                  </ContextMenu>
                                   {keyDateEntries.map(([date, labels]) => {
                                     const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
                                     if (centerPct === null) return null
@@ -1748,40 +1772,46 @@ export function TimelineView({
                               const isThisDragging = barDrag.draggingId === p.id
                               return (
                                 <div key={p.id}>
-                                  <div
-                                    className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                    style={{
-                                      left: barLeft,
-                                      width: barWidth,
-                                      top: barTop,
-                                      height: barHeight,
-                                      backgroundColor: barColorFromProject(p),
-                                    }}
-                                    onMouseDown={(e) => {
-                                      if (!assignScrollRef.current) return
-                                      barDrag.startDrag("move", p, e, assignScrollRef.current, () => setEditProject(p))
-                                    }}
-                                    onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
-                                    onMouseLeave={() => setBarHoverCard(null)}
-                                  >
-                                    <div
-                                      className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                  <ContextMenu>
+                                    <ContextMenuTrigger
+                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                      style={{
+                                        left: barLeft,
+                                        width: barWidth,
+                                        top: barTop,
+                                        height: barHeight,
+                                        backgroundColor: barColorFromProject(p),
+                                      }}
                                       onMouseDown={(e) => {
                                         if (!assignScrollRef.current) return
-                                        barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
+                                        barDrag.startDrag("move", p, e, assignScrollRef.current)
                                       }}
-                                    />
-                                    <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                      {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
-                                    </span>
-                                    <div
-                                      className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
-                                      onMouseDown={(e) => {
-                                        if (!assignScrollRef.current) return
-                                        barDrag.startDrag("resize-end", p, e, assignScrollRef.current)
-                                      }}
-                                    />
-                                  </div>
+                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
+                                      onMouseLeave={() => setBarHoverCard(null)}
+                                    >
+                                      <div
+                                        className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                        onMouseDown={(e) => {
+                                          if (!assignScrollRef.current) return
+                                          barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
+                                        }}
+                                      />
+                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                      </span>
+                                      <div
+                                        className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
+                                        onMouseDown={(e) => {
+                                          if (!assignScrollRef.current) return
+                                          barDrag.startDrag("resize-end", p, e, assignScrollRef.current)
+                                        }}
+                                      />
+                                    </ContextMenuTrigger>
+                                    <ContextMenuContent>
+                                      <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
+                                      {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                                    </ContextMenuContent>
+                                  </ContextMenu>
                                   {/* 日付メモの赤丸 */}
                                   {Object.entries(
                                     p.key_dates.reduce<Record<string, string[]>>((acc, kd) => {

@@ -60,6 +60,7 @@ export function useBarDrag(
     scrollEl: HTMLElement,
     onNoMove?: () => void,
   ) {
+    if (e.button !== 0) return
     if (!project.start_date || !project.end_date) {
       onNoMove?.()
       return
