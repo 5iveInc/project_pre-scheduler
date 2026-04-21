@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu"
 import { Settings2Icon, PlusIcon, Trash2Icon, ArrowUpDownIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, ListFilterIcon, ChevronRightIcon } from "lucide-react"
 import { ProjectEditModal, ChildTaskModal, ProjectFormFields } from "@/components/modal/project-edit-modal"
+import { deleteProjectsAction } from "@/app/project/actions"
 
 type SortKey = "id" | "volume" | "start_date" | "end_date"
 
@@ -497,6 +498,17 @@ export function TimelineView({
 
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<number>>(new Set())
 
+  useEffect(() => {
+    setExpandedProjectIds((prev) => {
+      const next = new Set(prev)
+      for (const id of prev) {
+        const project = projects.find((p) => p.id === id)
+        if (!project || !project.has_children) next.delete(id)
+      }
+      return next
+    })
+  }, [projects])
+
   function toggleExpand(id: number) {
     setExpandedProjectIds((prev) => {
       const next = new Set(prev)
@@ -507,6 +519,7 @@ export function TimelineView({
   }
 
   const [editProject, setEditProject] = useState<Project | null>(null)
+  const [deleteConfirmTask, setDeleteConfirmTask] = useState<Project | null>(null)
   const [barHoverCard, setBarHoverCard] = useState<{ project: Project; x: number; y: number; offDaySet: Set<string> } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1022,6 +1035,7 @@ export function TimelineView({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
                             )
@@ -1297,6 +1311,7 @@ export function TimelineView({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
                             )
@@ -1589,6 +1604,7 @@ export function TimelineView({
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
                                       }}>子タスクを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -1857,6 +1873,7 @@ export function TimelineView({
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
                                       }}>子タスクを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {/* 日付メモの赤丸 */}
@@ -1927,6 +1944,26 @@ export function TimelineView({
           open={editProject !== null}
           onOpenChange={(open) => !open && setEditProject(null)}
         />
+      )}
+
+      {/* 子タスク削除確認モーダル */}
+      {deleteConfirmTask !== null && (
+        <Dialog open={true} onOpenChange={(open) => { if (!open) setDeleteConfirmTask(null) }}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>子タスクを削除</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">「{deleteConfirmTask.name}」を削除しますか？この操作は元に戻せません。</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteConfirmTask(null)}>キャンセル</Button>
+              <Button variant="destructive" onClick={() => {
+                const id = deleteConfirmTask.id
+                setDeleteConfirmTask(null)
+                startTransition(async () => { await deleteProjectsAction([id]) })
+              }}>削除する</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* ── 設定モーダル ── */}
