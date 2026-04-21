@@ -1910,14 +1910,14 @@ export function TimelineView({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {users.find((u) => u.id === userSettingsUserId)?.name ?? ""} の個人設定
+              {users.find((u) => u.id === userSettingsUserId)?.name ?? ""}の個人設定
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold">有給休暇</h3>
+              <h3 className="text-sm font-semibold">休み設定</h3>
               <div className="space-y-2">
-                <Label className="text-xs text-muted-foreground">有給日（設定した日は担当行で休日扱いになります）</Label>
+                <Label className="text-xs text-muted-foreground">設定した日は担当別で休日扱いになります</Label>
                 <div className="space-y-2">
                   {userSettingsDates
                     .map((date, i) => ({ date, i }))
