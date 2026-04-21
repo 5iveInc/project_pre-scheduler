@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { addProject, updateProjectDates, setCustomHolidays, setUserPaidLeaves, type KeyDate, type ProjectLink } from "@/database/db"
+import { addProject, addChildProject, updateProjectDates, setCustomHolidays, setUserPaidLeaves, type KeyDate, type ProjectLink } from "@/database/db"
 
 function parseKeyDates(json: string | null): KeyDate[] {
   if (!json) return []
@@ -52,6 +52,19 @@ export async function saveCustomHolidaysAction(dates: string[]) {
 export async function saveUserPaidLeavesAction(userId: number, dates: string[]) {
   await setUserPaidLeaves(userId, dates)
   revalidatePath("/timeline")
+}
+
+export async function quickAddChildTaskAction(
+  parentId: number,
+  status: "相談中" | "受注済",
+  startDate: string | null,
+  endDate: string | null,
+  assigneeIds: number[] = [],
+) {
+  await addChildProject(parentId, "未設定", assigneeIds, startDate, endDate, null, null, [], status, "5ive", [])
+  revalidatePath("/")
+  revalidatePath("/timeline")
+  revalidatePath("/project")
 }
 
 export async function updateProjectDatesAction(

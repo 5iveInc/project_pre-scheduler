@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
 import type { Project, User } from "@/database/db"
-import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction } from "@/app/timeline/actions"
+import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
 import {
   Dialog,
@@ -84,6 +84,35 @@ function parseLocalDate(str: string): Date {
 
 function dayDiff(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+function toYMD(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function calcQuickChildDates(
+  parent: Project,
+  children: Project[],
+): { startDate: string; endDate: string } | null {
+  if (!parent.start_date) return null
+
+  let startDate: string
+  const childrenWithEnd = children.filter((c) => c.end_date !== null)
+
+  if (children.length === 0 || childrenWithEnd.length < children.length) {
+    startDate = parent.start_date
+  } else {
+    const latestEnd = childrenWithEnd.reduce((latest, c) =>
+      c.end_date! > latest ? c.end_date! : latest, "")
+    const d = parseLocalDate(latestEnd)
+    d.setDate(d.getDate() + 1)
+    startDate = toYMD(d)
+  }
+
+  const start = parseLocalDate(startDate)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 29)
+  return { startDate, endDate: toYMD(end) }
 }
 
 function getDisplayRange(projects: Project[]): { start: Date; end: Date } {
@@ -935,7 +964,12 @@ export function TimelineView({
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
-                              {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                              {p.parent_id === null && <ContextMenuItem onClick={() => {
+                                const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                if (!dates) return
+                                setExpandedProjectIds((prev) => new Set(prev).add(p.id))
+                                startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
+                              }}>子タスクを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1202,7 +1236,12 @@ export function TimelineView({
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
-                              {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                              {p.parent_id === null && <ContextMenuItem onClick={() => {
+                                const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                if (!dates) return
+                                setExpandedProjectIds((prev) => new Set(prev).add(p.id))
+                                startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
+                              }}>子タスクを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1545,7 +1584,11 @@ export function TimelineView({
                                     </ContextMenuTrigger>
                                     <ContextMenuContent>
                                       <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
-                                      {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                                      {p.parent_id === null && <ContextMenuItem onClick={() => {
+                                        const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                        if (!dates) return
+                                        startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
+                                      }}>子タスクを追加</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -1809,7 +1852,11 @@ export function TimelineView({
                                     </ContextMenuTrigger>
                                     <ContextMenuContent>
                                       <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
-                                      {p.parent_id === null && <ContextMenuItem onClick={() => {}}>子タスクを追加</ContextMenuItem>}
+                                      {p.parent_id === null && <ContextMenuItem onClick={() => {
+                                        const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                        if (!dates) return
+                                        startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
+                                      }}>子タスクを追加</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {/* 日付メモの赤丸 */}

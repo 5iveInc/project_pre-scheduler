@@ -354,7 +354,6 @@ export async function addChildProject(
   volume: number | null,
   keyDates: KeyDate[] = [],
   status: ProjectStatus = "相談中",
-  links: ProjectLink[] = [],
   assigneeType: AssigneeType = "5ive",
   stakeholderAssigneeIds: number[] = [],
 ): Promise<void> {
@@ -367,8 +366,6 @@ export async function addChildProject(
   if (assigneeType === "5ive") await insertJunction(db, "project_assignees", newId, assigneeIds)
   if (assigneeType === "stakeholder") await replaceChildStakeholders(db, newId, stakeholderAssigneeIds)
   await replaceKeyDates(db, newId, keyDates)
-  // リンクは親単位で管理
-  await replaceLinks(db, parentId, links)
 }
 
 export async function updateProject(
@@ -395,10 +392,12 @@ export async function updateProject(
   if (assigneeType === "5ive") await insertJunction(db, "project_assignees", id, assigneeIds)
   await replaceChildStakeholders(db, id, assigneeType === "stakeholder" ? stakeholderAssigneeIds : [])
   await replaceKeyDates(db, id, keyDates)
-  // リンクは親単位で管理（子タスクの場合は親IDに保存）
+  // リンクは親案件のみで管理。子タスク編集時はリンクに触れない
   const { rows: parentRows } = await db.execute({ sql: "SELECT parent_id FROM projects WHERE id=?", args: [id] })
   const parentId = (parentRows[0] as unknown as { parent_id: number | null })?.parent_id ?? null
-  await replaceLinks(db, parentId ?? id, links)
+  if (parentId === null) {
+    await replaceLinks(db, id, links)
+  }
 }
 
 export async function addStakeholder(projectId: number, name: string): Promise<Stakeholder> {

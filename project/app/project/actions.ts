@@ -57,13 +57,12 @@ export async function addChildProjectAction(parentId: number, formData: FormData
   const memo = (formData.get("memo") as string) || null
   const volume = Number(formData.get("volume")) || null
   const keyDates = parseKeyDates(formData.get("keyDatesJson") as string | null)
-  const links = parseLinks(formData.get("linksJson") as string | null)
   const rawStatus = formData.get("status") as string | null
   const status = rawStatus === "受注済" ? "受注済" : "相談中"
 
   if (!name) throw new Error("案件名は必須です")
 
-  await addChildProject(parentId, name, assigneeIds, startDate, endDate, memo, volume, keyDates, status, links, assigneeType, stakeholderAssigneeIds)
+  await addChildProject(parentId, name, assigneeIds, startDate, endDate, memo, volume, keyDates, status, assigneeType, stakeholderAssigneeIds)
   revalidatePath("/")
   revalidatePath("/project")
   revalidatePath("/timeline")
