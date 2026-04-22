@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition, useEffect, useRef, useMemo } from "react"
+import { createPortal } from "react-dom"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
@@ -399,6 +400,22 @@ export function TimelineView({
     setViewMode(mode)
   }
 
+  function handleScrollToToday() {
+    if (viewMode === "day") {
+      if (activeTab === "project") {
+        if (scrollRef.current) scrollRef.current.scrollLeft = todayIndex * dayWidth
+        if (projectHeaderScrollRef.current) projectHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
+      } else {
+        if (assignScrollRef.current) assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+        if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
+      }
+    } else {
+      const colWidth = monthColWidth
+      if (monthViewScrollRef.current) monthViewScrollRef.current.scrollLeft = 1 * colWidth
+      if (monthViewHeaderScrollRef.current) monthViewHeaderScrollRef.current.scrollLeft = 1 * colWidth
+    }
+  }
+
   // ── 月ビュー：列幅（1画面に6ヶ月）──
   const monthViewScrollRef = useRef<HTMLDivElement>(null)
   const monthViewHeaderScrollRef = useRef<HTMLDivElement>(null)
@@ -522,6 +539,8 @@ export function TimelineView({
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<Project | null>(null)
   const [barHoverCard, setBarHoverCard] = useState<{ project: Project; x: number; y: number; offDaySet: Set<string> } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [customDates, setCustomDates] = useState<string[]>(customHolidays)
   const [userPaidLeaveMap, setUserPaidLeaveMap] = useState<Record<number, string[]>>(userPaidLeaves)
@@ -781,28 +800,33 @@ export function TimelineView({
       {/* ── ツールバー ── */}
       <div className="flex justify-end gap-2 mb-2">
         {/* 月/日 切り替えボタングループ */}
-        <div className="inline-flex mr-auto">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleViewMode("month")}
-            className={[
-              "rounded-r-none border-r-0",
-              viewMode === "month" ? "bg-muted text-foreground" : "",
-            ].join(" ")}
-          >
-            月
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => handleViewMode("day")}
-            className={[
-              "rounded-l-none",
-              viewMode === "day" ? "bg-muted text-foreground" : "",
-            ].join(" ")}
-          >
-            日
+        <div className="inline-flex items-center gap-2 mr-auto">
+          <div className="inline-flex">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleViewMode("month")}
+              className={[
+                "rounded-r-none border-r-0",
+                viewMode === "month" ? "bg-muted text-foreground" : "",
+              ].join(" ")}
+            >
+              月
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleViewMode("day")}
+              className={[
+                "rounded-l-none",
+                viewMode === "day" ? "bg-muted text-foreground" : "",
+              ].join(" ")}
+            >
+              日
+            </Button>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleScrollToToday}>
+            今日
           </Button>
         </div>
         {/* ソートボタン */}
@@ -1561,14 +1585,6 @@ export function TimelineView({
           </div>
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => setAddOpen(true)}
-        className="mt-2 w-full rounded-lg border border-dashed border-input py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
-      >
-        <PlusIcon className="inline-block size-4 mr-1 align-text-bottom" />
-        案件を追加
-      </button>
       </>
       )}
 
@@ -1594,28 +1610,33 @@ export function TimelineView({
             {/* ツールバー（絞り込み・設定） */}
             <div className="flex justify-end gap-2 mb-2">
               {/* 月/日 切り替えボタングループ */}
-              <div className="inline-flex mr-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleViewMode("month")}
-                  className={[
-                    "rounded-r-none border-r-0",
-                    viewMode === "month" ? "bg-muted text-foreground" : "",
-                  ].join(" ")}
-                >
-                  月
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleViewMode("day")}
-                  className={[
-                    "rounded-l-none",
-                    viewMode === "day" ? "bg-muted text-foreground" : "",
-                  ].join(" ")}
-                >
-                  日
+              <div className="inline-flex items-center gap-2 mr-auto">
+                <div className="inline-flex">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleViewMode("month")}
+                    className={[
+                      "rounded-r-none border-r-0",
+                      viewMode === "month" ? "bg-muted text-foreground" : "",
+                    ].join(" ")}
+                  >
+                    月
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleViewMode("day")}
+                    className={[
+                      "rounded-l-none",
+                      viewMode === "day" ? "bg-muted text-foreground" : "",
+                    ].join(" ")}
+                  >
+                    日
+                  </Button>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleScrollToToday}>
+                  今日
                 </Button>
               </div>
               {/* 受注済のみ（担当タブ） */}
@@ -2150,14 +2171,6 @@ export function TimelineView({
                 </div>
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setAddOpen(true)}
-              className="mt-2 w-full rounded-lg border border-dashed border-input py-2 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors cursor-pointer"
-            >
-              <PlusIcon className="inline-block size-4 mr-1 align-text-bottom" />
-              案件を追加
-            </button>
           </>
         )
       })()}
@@ -2321,13 +2334,31 @@ export function TimelineView({
           </form>
         </DialogContent>
       </Dialog>
-      {barHoverCard && (
-        <div
-          className="fixed z-50 pointer-events-none w-64 rounded-lg bg-popover p-2.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
-          style={{ left: barHoverCard.x + 12, top: barHoverCard.y + 16 }}
-        >
-          <BarHoverCardContent project={barHoverCard.project} offDaySet={barHoverCard.offDaySet} />
-        </div>
+      {mounted && createPortal(
+        <>
+          {/* ── FAB：案件を追加 ── */}
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="fixed z-50 flex items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg border border-primary hover:bg-white hover:text-primary transition-colors transition-background-color cursor-pointer"
+            style={{ width: 60, height: 60, right: 12, bottom: 12 }}
+            aria-label="案件を追加"
+          >
+            <PlusIcon className="size-7" />
+          </button>
+          {barHoverCard && (
+            <div
+              className="fixed z-50 pointer-events-none w-64 rounded-lg bg-popover p-2.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+              style={{
+                left: Math.min(barHoverCard.x + 12, (typeof window !== "undefined" ? window.innerWidth : 1920) - 256 - 12),
+                top: barHoverCard.y + 16,
+              }}
+            >
+              <BarHoverCardContent project={barHoverCard.project} offDaySet={barHoverCard.offDaySet} />
+            </div>
+          )}
+        </>,
+        document.body
       )}
     </TooltipProvider>
   )
