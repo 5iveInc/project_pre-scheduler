@@ -1599,10 +1599,21 @@ export function TimelineView({
         )
         const visibleAssigneeUsers = assigneeUsers.filter((u) => !hiddenUserIds.has(u.id))
         // ユーザーごとにレーン割り当てを事前計算
+        // 親表示中は親を上段・子を下段に分離。親非表示時はフラットに計算
         const userLaneData = visibleAssigneeUsers.map((u) => {
           const userProjects = filteredProjects.filter((p) => p.assignee_ids.includes(u.id))
-          const { assignments, laneCount } = calcLanes(userProjects)
-          return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT }
+          if (hideParentBars) {
+            const { assignments, laneCount } = calcLanes(userProjects)
+            return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount: 0 }
+          }
+          const parentProjects = userProjects.filter((p) => p.parent_id === null)
+          const childProjects = userProjects.filter((p) => p.parent_id !== null)
+          const { assignments: parentAssignments, laneCount: parentLaneCount } = calcLanes(parentProjects)
+          const { assignments: childAssignmentsRaw, laneCount: childLaneCount } = calcLanes(childProjects)
+          const childAssignments = childAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentLaneCount }))
+          const assignments = [...parentAssignments, ...childAssignments]
+          const laneCount = parentLaneCount + (childProjects.length > 0 ? childLaneCount : 0)
+          return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount }
         })
 
         return (
@@ -1811,7 +1822,7 @@ export function TimelineView({
                           担当者が割り当てられた案件がありません。
                         </div>
                       ) : (
-                        userLaneData.map(({ user: u, assignments, rowHeight }) => (
+                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount }) => (
                           <div
                             key={u.id}
                             style={{ height: rowHeight, width: totalMonthWidth, position: "relative" }}
@@ -1820,6 +1831,13 @@ export function TimelineView({
                             {monthViewMonths.map((m) => (
                               <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                             ))}
+                            {/* 親/子セクション区切り線 */}
+                            {parentLaneCount > 0 && parentLaneCount < laneCount && (
+                              <div
+                                className="absolute left-0 right-0 pointer-events-none z-10"
+                                style={{ top: parentLaneCount * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
+                              />
+                            )}
                             {assignments.map(({ project: p, lane }) => {
                               const barInfo = calcMonthViewBar(p, monthViewMonths)
                               if (!barInfo) return null
@@ -2015,7 +2033,7 @@ export function TimelineView({
                           担当者が割り当てられた案件がありません。
                         </div>
                       ) : (
-                        userLaneData.map(({ user: u, assignments, rowHeight }) => {
+                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount }) => {
                           const userPaidLeaveSet = new Set(userPaidLeaveMap[u.id] ?? [])
                           const userIsRest = (d: Date) => isRestDay(d) || userPaidLeaveSet.has(toYMD(d))
                           const userHolidaySet = userPaidLeaveSet.size > 0
@@ -2033,6 +2051,13 @@ export function TimelineView({
                             style={{ height: rowHeight, width: totalWidth, position: "relative", backgroundImage: userRowBg }}
                             className="border-b border-black last:border-b-0"
                           >
+                            {/* 親/子セクション区切り線 */}
+                            {parentLaneCount > 0 && parentLaneCount < laneCount && (
+                              <div
+                                className="absolute left-0 right-0 pointer-events-none z-10"
+                                style={{ top: parentLaneCount * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
+                              />
+                            )}
                             {/* 空きハイライト（オレンジ） */}
                             {coveredRanges.map(({ fromIdx, toIdx }) => (
                               <div
