@@ -556,6 +556,12 @@ export function TimelineView({
   // 担当タブ 親バー非表示
   const [hideParentBars, setHideParentBars] = useState(false)
 
+  // 案件タブ絞り込み（hiddenProjectUserIds に含まれるユーザーの案件は非表示）
+  const [hiddenProjectUserIds, setHiddenProjectUserIds] = useState<Set<number>>(new Set())
+  const [showUnassigned, setShowUnassigned] = useState(true)
+  const [projectFilterOpen, setProjectFilterOpen] = useState(false)
+  const projectFilterRef = useRef<HTMLDivElement>(null)
+
   // 担当タブ絞り込み（hiddenUserIds に含まれるユーザーは非表示）
   const [hiddenUserIds, setHiddenUserIds] = useState<Set<number>>(new Set())
   const [assignFilterOpen, setAssignFilterOpen] = useState(false)
@@ -571,6 +577,17 @@ export function TimelineView({
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [sortMenuOpen])
+
+  useEffect(() => {
+    if (!projectFilterOpen) return
+    function handleClickOutside(e: MouseEvent) {
+      if (projectFilterRef.current && !projectFilterRef.current.contains(e.target as Node)) {
+        setProjectFilterOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [projectFilterOpen])
 
   useEffect(() => {
     if (!assignFilterOpen) return
@@ -612,11 +629,35 @@ export function TimelineView({
     [sortedProjects, showOrderedOnly],
   )
 
-  // 案件ビュー専用: 子タスクを除外
+  const isProjectFilterActive = hiddenProjectUserIds.size > 0 || !showUnassigned
+
+  // 案件タブ絞り込み用: 全ユーザーを表示
+  const projectTabAssigneeUsers = users
+
+  // 案件ビュー専用: 子タスクを除外（フィルタ未使用時の通常表示用）
   const projectTabProjects = useMemo(
     () => visibleProjects.filter((p) => p.parent_id === null),
     [visibleProjects],
   )
+
+  // フィルタ使用時: 該当する子タスクを親ごとにパックして列挙
+  const filteredChildRows = useMemo(() => {
+    if (!isProjectFilterActive) return []
+    const rows: Array<{ packedRow: Project[]; parentName: string }> = []
+    for (const parent of visibleProjects.filter((p) => p.parent_id === null && p.has_children)) {
+      const children = projects.filter((c) => c.parent_id === parent.id)
+      const matched = children.filter((child) => {
+        if (child.assignee_type === "client" || child.assignee_type === "stakeholder") return false
+        if (child.assignee_ids.length === 0) return showUnassigned
+        return child.assignee_ids.some((id) => !hiddenProjectUserIds.has(id))
+      })
+      if (matched.length === 0) continue
+      for (const packedRow of packChildTasks(matched)) {
+        rows.push({ packedRow, parentName: parent.name })
+      }
+    }
+    return rows
+  }, [isProjectFilterActive, visibleProjects, projects, hiddenProjectUserIds, showUnassigned])
 
   function handleSortOption(key: SortKey) {
     if (sortKey === key) {
@@ -821,6 +862,72 @@ export function TimelineView({
           )}
         </div>
         {/* 絞り込みボタン（案件タブ） */}
+        <div ref={projectFilterRef} className="relative">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setProjectFilterOpen((prev) => !prev)}
+            className={hiddenProjectUserIds.size > 0 || !showUnassigned ? "border-primary text-primary" : ""}
+          >
+            <ListFilterIcon className="size-4" />
+            絞り込み
+          </Button>
+          {projectFilterOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-56 rounded-md border bg-background shadow-md py-1">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b">
+                <span className="text-xs font-semibold text-muted-foreground">表示する担当者</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => { setHiddenProjectUserIds(new Set()); setShowUnassigned(true) }}
+                  >
+                    すべて表示
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:underline"
+                    onClick={() => { setHiddenProjectUserIds(new Set(projectTabAssigneeUsers.map((u) => u.id))); setShowUnassigned(false) }}
+                  >
+                    すべて非表示
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                <label className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted cursor-pointer border-b">
+                  <input
+                    type="checkbox"
+                    checked={showUnassigned}
+                    onChange={(e) => setShowUnassigned(e.target.checked)}
+                    className="size-4 rounded border-input accent-primary shrink-0"
+                  />
+                  <span className="truncate text-muted-foreground">未アサイン</span>
+                </label>
+                {projectTabAssigneeUsers.map((u) => (
+                  <label
+                    key={u.id}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenProjectUserIds.has(u.id)}
+                      onChange={(e) => {
+                        setHiddenProjectUserIds((prev) => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.delete(u.id)
+                          else next.add(u.id)
+                          return next
+                        })
+                      }}
+                      className="size-4 rounded border-input accent-primary shrink-0"
+                    />
+                    <span className="truncate">{u.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
           <input
             type="checkbox"
@@ -876,7 +983,23 @@ export function TimelineView({
               style={{ width: LEFT_COL_WIDTH, minWidth: LEFT_COL_WIDTH }}
               className="shrink-0 border-r bg-background z-10"
             >
-              {projectTabProjects.length === 0 ? (
+              {isProjectFilterActive ? (
+                filteredChildRows.length === 0 ? (
+                  <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                    案件なし
+                  </div>
+                ) : (
+                  filteredChildRows.map(({ parentName }, rowIdx) => (
+                    <div
+                      key={`${parentName}-${rowIdx}`}
+                      style={{ height: ROW_HEIGHT }}
+                      className="w-full border-b flex items-center px-3 bg-muted/20"
+                    >
+                      <span className="text-sm font-medium truncate">{parentName}</span>
+                    </div>
+                  ))
+                )
+              ) : projectTabProjects.length === 0 ? (
                 <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
                   案件なし
                 </div>
@@ -926,7 +1049,49 @@ export function TimelineView({
               }}
             >
               <div style={{ width: totalMonthWidth, minWidth: totalMonthWidth }}>
-                {projectTabProjects.length === 0 ? (
+                {isProjectFilterActive ? (
+                  filteredChildRows.length === 0 ? (
+                    <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
+                      案件がありません。
+                    </div>
+                  ) : (
+                    filteredChildRows.map(({ packedRow, parentName }, rowIdx) => (
+                      <div
+                        key={`${parentName}-${rowIdx}`}
+                        style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
+                        className="flex border-b bg-muted/20"
+                      >
+                        {monthViewMonths.map((m) => (
+                          <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                        ))}
+                        {packedRow.map((c) => {
+                          const barInfo = calcMonthViewBar(c, monthViewMonths)
+                          if (!barInfo) return null
+                          const barColor = barColorFromProject(c, true)
+                          const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
+                          return (
+                            <ContextMenu key={c.id}>
+                              <ContextMenuTrigger
+                                className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                style={{ left: `${barInfo.leftPct}%`, width: `${barInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: barColor }}
+                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                onMouseLeave={() => setBarHoverCard(null)}
+                              >
+                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          )
+                        })}
+                      </div>
+                    ))
+                  )
+                ) : projectTabProjects.length === 0 ? (
                   <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
                     案件がありません。「案件一覧」から登録してください。
                   </div>
@@ -1126,7 +1291,23 @@ export function TimelineView({
               className="shrink-0 border-r bg-background z-10"
             >
               {/* 案件行 */}
-              {projects.length === 0 ? (
+              {isProjectFilterActive ? (
+                filteredChildRows.length === 0 ? (
+                  <div style={{ height: ROW_HEIGHT }} className="flex items-center px-3 text-sm text-muted-foreground">
+                    案件なし
+                  </div>
+                ) : (
+                  filteredChildRows.map(({ parentName }, rowIdx) => (
+                    <div
+                      key={`${parentName}-${rowIdx}`}
+                      style={{ height: ROW_HEIGHT }}
+                      className="w-full border-b flex items-center px-3 bg-muted/20"
+                    >
+                      <span className="text-sm font-medium truncate">{parentName}</span>
+                    </div>
+                  ))
+                )
+              ) : projects.length === 0 ? (
                 <div
                   style={{ height: ROW_HEIGHT }}
                   className="flex items-center px-3 text-sm text-muted-foreground"
@@ -1183,7 +1364,61 @@ export function TimelineView({
               <div style={{ width: totalWidth, minWidth: totalWidth }}>
 
                 {/* 案件行 */}
-                {projects.length === 0 ? (
+                {isProjectFilterActive ? (
+                  filteredChildRows.length === 0 ? (
+                    <div style={{ height: ROW_HEIGHT }} className="flex items-center justify-center text-sm text-muted-foreground">
+                      案件がありません。
+                    </div>
+                  ) : (
+                    filteredChildRows.map(({ packedRow, parentName }, rowIdx) => (
+                      <div
+                        key={`${parentName}-${rowIdx}`}
+                        style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                        className="border-b bg-muted/20"
+                      >
+                        {showTodayLine && (
+                          <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
+                        )}
+                        {Array.from(highlightedDateIndices).map((idx) => (
+                          <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
+                        ))}
+                        {packedRow.map((c) => {
+                          const override = barDrag.getBarOverride(c.id)
+                          const effStart = override?.start_date ?? c.start_date
+                          const effEnd = override?.end_date ?? c.end_date
+                          if (!effStart || !effEnd) return null
+                          const clampedStart = Math.max(0, dayDiff(start, parseLocalDate(effStart)))
+                          const clampedEnd = Math.min(totalDays - 1, dayDiff(start, parseLocalDate(effEnd)))
+                          if (clampedStart > clampedEnd) return null
+                          const barLeft = clampedStart * dayWidth + 3
+                          const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
+                          const barColor = barColorFromProject(c, true)
+                          const isThisDragging = barDrag.draggingId === c.id
+                          const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
+                          return (
+                            <ContextMenu key={c.id}>
+                              <ContextMenuTrigger
+                                className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
+                                onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current) }}
+                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                onMouseLeave={() => setBarHoverCard(null)}
+                              >
+                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
+                                <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
+                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          )
+                        })}
+                      </div>
+                    ))
+                  )
+                ) : projects.length === 0 ? (
                   <div
                     style={{ height: ROW_HEIGHT }}
                     className="flex items-center justify-center text-sm text-muted-foreground"
