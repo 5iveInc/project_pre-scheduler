@@ -20,8 +20,8 @@ export default async function Home() {
 
   const userCards = users
     .map((user) => {
-      const assigned = activeProjects.filter((p) => p.assignee_ids.includes(user.id))
-      const nextProjects = futureProjects.filter((p) => p.assignee_ids.includes(user.id))
+      const assigned = activeProjects.filter((p) => p.assignee_ids.includes(user.id) && !p.has_children)
+      const nextProjects = futureProjects.filter((p) => p.assignee_ids.includes(user.id) && !p.has_children)
       return { user, assigned, nextProjects }
     })
     .sort((a, b) => b.assigned.length - a.assigned.length)
