@@ -335,6 +335,66 @@ function calcBusinessDays(startDate: string, endDate: string, offDaySet: Set<str
   return count
 }
 
+const DAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"]
+
+function formatDateJP(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-").map(Number)
+  const date = new Date(y, m - 1, d)
+  return `${m}月${d}日（${DAY_LABELS[date.getDay()]}）`
+}
+
+function DragDateTooltip({
+  mouseX,
+  mouseY,
+  dragType,
+  currentStart,
+  currentEnd,
+}: {
+  mouseX: number
+  mouseY: number
+  dragType: "resize-start" | "resize-end" | "move"
+  currentStart: string | null
+  currentEnd: string | null
+}) {
+  if (!currentStart || !currentEnd) return null
+
+  const label =
+    dragType === "resize-start"
+      ? formatDateJP(currentStart)
+      : dragType === "resize-end"
+        ? formatDateJP(currentEnd)
+        : `${formatDateJP(currentStart)} 〜 ${formatDateJP(currentEnd)}`
+
+  const OFFSET = 10
+  const estWidth = dragType === "move" ? 260 : 130
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1920
+
+  let left: number
+  let top: number
+
+  if (dragType === "resize-start") {
+    left = mouseX - estWidth - OFFSET
+    top = mouseY - 32
+  } else if (dragType === "resize-end") {
+    left = mouseX + OFFSET
+    top = mouseY - 32
+  } else {
+    left = mouseX - estWidth / 2
+    top = mouseY - 40
+  }
+
+  left = Math.max(4, Math.min(left, vw - estWidth - 4))
+
+  return (
+    <div
+      className="fixed z-[60] pointer-events-none px-2.5 py-1.5 rounded-md bg-gray-900 text-white text-xs font-medium whitespace-nowrap shadow-lg"
+      style={{ left, top }}
+    >
+      {label}
+    </div>
+  )
+}
+
 function BarHoverCardContent({ project, offDaySet }: { project: Project; offDaySet: Set<string> }) {
   const assigneeDisplay = project.assignee_names.length > 0 ? project.assignee_names.join("、") : "未設定"
   const businessDays = project.start_date && project.end_date
@@ -2371,7 +2431,7 @@ export function TimelineView({
           >
             <PlusIcon className="size-7" />
           </button>
-          {barHoverCard && (
+          {barHoverCard && !barDrag.isDragging && (
             <div
               className="fixed z-50 pointer-events-none w-64 rounded-lg bg-popover p-2.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
               style={{
@@ -2381,6 +2441,15 @@ export function TimelineView({
             >
               <BarHoverCardContent project={barHoverCard.project} offDaySet={barHoverCard.offDaySet} />
             </div>
+          )}
+          {barDrag.isDragging && barDrag.mousePos && barDrag.dragType && (
+            <DragDateTooltip
+              mouseX={barDrag.mousePos.x}
+              mouseY={barDrag.mousePos.y}
+              dragType={barDrag.dragType}
+              currentStart={barDrag.dragCurrentStart}
+              currentEnd={barDrag.dragCurrentEnd}
+            />
           )}
         </>,
         document.body

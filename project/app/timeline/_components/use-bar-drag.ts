@@ -43,6 +43,7 @@ export function useBarDrag(
   const [dragState, setDragState] = useState<DragState | null>(null)
   const dragStateRef = useRef<DragState | null>(null)
   const hasMoved = useRef(false)
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
 
   // dayWidth は drag 中も最新値を参照できるよう ref で持つ
   const dayWidthRef = useRef(dayWidth)
@@ -101,6 +102,7 @@ export function useBarDrag(
       const ds = dragStateRef.current
       if (!ds) return
       hasMoved.current = true
+      setMousePos({ x: ev.clientX, y: ev.clientY })
 
       const rawIdx = clientXToDayIndex(ev.clientX, scrollEl)
       const clampedIdx = Math.max(0, Math.min(totalDays - 1, rawIdx))
@@ -141,6 +143,7 @@ export function useBarDrag(
       }
       dragStateRef.current = null
       setDragState(null)
+      setMousePos(null)
       hasMoved.current = false
       document.body.style.cursor = prevCursor
       document.body.style.userSelect = ""
@@ -162,5 +165,9 @@ export function useBarDrag(
     getBarOverride,
     isDragging: dragState !== null,
     draggingId: dragState?.projectId ?? null,
+    mousePos,
+    dragType: dragState?.type ?? null,
+    dragCurrentStart: dragState?.currentStart ?? null,
+    dragCurrentEnd: dragState?.currentEnd ?? null,
   }
 }
