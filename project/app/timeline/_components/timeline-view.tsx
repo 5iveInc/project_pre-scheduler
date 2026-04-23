@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
+import { useMonthBarDrag } from "./use-month-bar-drag"
 import {
   Dialog,
   DialogContent,
@@ -827,6 +828,12 @@ export function TimelineView({
     })
   }, [])
 
+  const monthBarDrag = useMonthBarDrag(monthColWidth, monthViewMonths, (id, newStart, newEnd) => {
+    startTransition(async () => {
+      await updateProjectDatesAction(id, newStart, newEnd)
+    })
+  })
+
   const TABS = [
     { id: "project", label: "案件" },
     { id: "assign", label: "担当" },
@@ -1149,21 +1156,24 @@ export function TimelineView({
                           <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                         ))}
                         {packedRow.map((c) => {
-                          const barInfo = calcMonthViewBar(c, monthViewMonths)
+                          const override = monthBarDrag.getBarOverride(c.id)
+                          const barInfo = calcMonthViewBar(override ?? c, monthViewMonths)
                           if (!barInfo) return null
                           const barColor = barColorFromProject(c, true)
                           const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
+                          const isThisDragging = monthBarDrag.draggingId === c.id
                           return (
                             <ContextMenu key={c.id}>
                               <ContextMenuTrigger
-                                className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                 style={{ left: `${barInfo.leftPct}%`, width: `${barInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: barColor }}
+                                onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", c, e, monthViewScrollRef.current) }}
                                 onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                                 onMouseLeave={() => setBarHoverCard(null)}
                               >
-                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", c, e, monthViewScrollRef.current) }} />
                                 <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", c, e, monthViewScrollRef.current) }} />
                               </ContextMenuTrigger>
                               <ContextMenuContent>
                                 <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
@@ -1185,7 +1195,9 @@ export function TimelineView({
                     const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
                     const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
-                    const parentBarInfo = calcMonthViewBar(p, monthViewMonths)
+                    const parentOverride = monthBarDrag.getBarOverride(p.id)
+                    const parentBarInfo = calcMonthViewBar(parentOverride ?? p, monthViewMonths)
+                    const isParentDragging = monthBarDrag.draggingId === p.id
                     const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
                     // 親 + 全子タスクの key_dates を親行に常に集約して表示
                     const parentKeyDates = Object.entries(
@@ -1209,7 +1221,7 @@ export function TimelineView({
                         {parentBarInfo && (
                           <ContextMenu>
                             <ContextMenuTrigger
-                              className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                              className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                               style={{
                                 left: `${parentBarInfo.leftPct}%`,
                                 width: `${parentBarInfo.widthPct}%`,
@@ -1217,12 +1229,13 @@ export function TimelineView({
                                 bottom: 10,
                                 backgroundColor: parentBarColor,
                               }}
+                              onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
                               onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                               onMouseLeave={() => setBarHoverCard(null)}
                             >
-                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", p, e, monthViewScrollRef.current) }} />
                               <span className="px-2 text-xs text-white font-medium truncate leading-none">{p.name}</span>
-                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", p, e, monthViewScrollRef.current) }} />
                             </ContextMenuTrigger>
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
@@ -1260,14 +1273,16 @@ export function TimelineView({
                             <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
                           ))}
                           {rowChildren.map((c) => {
-                            const barInfo = calcMonthViewBar(c, monthViewMonths)
+                            const override = monthBarDrag.getBarOverride(c.id)
+                            const barInfo = calcMonthViewBar(override ?? c, monthViewMonths)
                             if (!barInfo) return null
                             const barColor = barColorFromProject(c, true)
                             const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
+                            const isThisDragging = monthBarDrag.draggingId === c.id
                             return (
                               <ContextMenu key={c.id}>
                                 <ContextMenuTrigger
-                                  className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                   style={{
                                     left: `${barInfo.leftPct}%`,
                                     width: `${barInfo.widthPct}%`,
@@ -1275,12 +1290,13 @@ export function TimelineView({
                                     bottom: 10,
                                     backgroundColor: barColor,
                                   }}
+                                  onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", c, e, monthViewScrollRef.current) }}
                                   onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                                   onMouseLeave={() => setBarHoverCard(null)}
                                 >
-                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", c, e, monthViewScrollRef.current) }} />
                                   <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? "bg-black/30" : "bg-white/60"}`} />
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", c, e, monthViewScrollRef.current) }} />
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
@@ -1899,8 +1915,10 @@ export function TimelineView({
                               />
                             )}
                             {assignments.map(({ project: p, lane }) => {
-                              const barInfo = calcMonthViewBar(p, monthViewMonths)
+                              const override = monthBarDrag.getBarOverride(p.id)
+                              const barInfo = calcMonthViewBar(override ?? p, monthViewMonths)
                               if (!barInfo) return null
+                              const isThisDragging = monthBarDrag.draggingId === p.id
                               const barTop = lane * ROW_HEIGHT + 10
                               const barHeight = ROW_HEIGHT - 20
                               const keyDateEntries = Object.entries(
@@ -1914,7 +1932,7 @@ export function TimelineView({
                                 <div key={p.id}>
                                   <ContextMenu>
                                     <ContextMenuTrigger
-                                      className="group absolute rounded-md cursor-context-menu hover:opacity-80 transition-opacity flex items-center overflow-hidden shadow-sm"
+                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                       style={{
                                         left: `${barInfo.leftPct}%`,
                                         width: `${barInfo.widthPct}%`,
@@ -1922,14 +1940,15 @@ export function TimelineView({
                                         height: barHeight,
                                         backgroundColor: barColorFromProject(p),
                                       }}
+                                      onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
                                       onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
                                       onMouseLeave={() => setBarHoverCard(null)}
                                     >
-                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", p, e, monthViewScrollRef.current) }} />
                                       <span className="px-2 text-xs text-white font-medium truncate leading-none">
                                         {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
                                       </span>
-                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", p, e, monthViewScrollRef.current) }} />
                                     </ContextMenuTrigger>
                                     <ContextMenuContent>
                                       <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
@@ -2431,7 +2450,7 @@ export function TimelineView({
           >
             <PlusIcon className="size-7" />
           </button>
-          {barHoverCard && !barDrag.isDragging && (
+          {barHoverCard && !barDrag.isDragging && !monthBarDrag.isDragging && (
             <div
               className="fixed z-50 pointer-events-none w-64 rounded-lg bg-popover p-2.5 text-popover-foreground shadow-md ring-1 ring-foreground/10"
               style={{
@@ -2449,6 +2468,15 @@ export function TimelineView({
               dragType={barDrag.dragType}
               currentStart={barDrag.dragCurrentStart}
               currentEnd={barDrag.dragCurrentEnd}
+            />
+          )}
+          {monthBarDrag.isDragging && monthBarDrag.mousePos && monthBarDrag.dragType && (
+            <DragDateTooltip
+              mouseX={monthBarDrag.mousePos.x}
+              mouseY={monthBarDrag.mousePos.y}
+              dragType={monthBarDrag.dragType}
+              currentStart={monthBarDrag.dragCurrentStart}
+              currentEnd={monthBarDrag.dragCurrentEnd}
             />
           )}
         </>,
