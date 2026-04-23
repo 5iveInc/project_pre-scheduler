@@ -1325,7 +1325,7 @@ export function TimelineView({
                     <div
                       key={`${parentName}-${rowIdx}`}
                       style={{ height: ROW_HEIGHT }}
-                      className="w-full border-b flex items-center px-3 bg-muted/20"
+                      className="w-full border-b border-black flex items-center px-3 bg-muted/20"
                     >
                       <span className="text-sm font-medium truncate">{parentName}</span>
                     </div>
@@ -1348,7 +1348,7 @@ export function TimelineView({
                       key={p.id}
                       type="button"
                       style={{ height: ROW_HEIGHT }}
-                      className="w-full border-b flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+                      className={`w-full border-b ${!isExpanded ? "border-black" : ""} flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer`}
                       onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
                       title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
                     >
@@ -1363,7 +1363,7 @@ export function TimelineView({
                       <div
                         key={`child-left-${p.id}-${rowIdx}`}
                         style={{ height: ROW_HEIGHT }}
-                        className="w-full border-b flex items-center pl-8 pr-3 bg-muted/20"
+                        className={`w-full border-b ${rowIdx === packedRows.length - 1 ? "border-black" : ""} flex items-center pl-8 pr-3 bg-muted/20`}
                       >
                         {rowIdx === 0 && (
                           <span className="text-xs font-medium text-muted-foreground">子タスク</span>
@@ -1398,7 +1398,7 @@ export function TimelineView({
                       <div
                         key={`${parentName}-${rowIdx}`}
                         style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                        className="border-b bg-muted/20"
+                        className="border-b border-black bg-muted/20"
                       >
                         {showTodayLine && (
                           <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
@@ -1486,7 +1486,7 @@ export function TimelineView({
                       <div
                         key={p.id}
                         style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                        className="border-b"
+                        className={`border-b ${!isExpanded ? "border-black" : ""}`}
                       >
                         {showTodayLine && (
                           <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
@@ -1534,7 +1534,7 @@ export function TimelineView({
                         <div
                           key={`child-row-${p.id}-${rowIdx}`}
                           style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                          className="border-b bg-muted/20"
+                          className={`border-b ${rowIdx === packedRows.length - 1 ? "border-black" : ""} bg-muted/20`}
                         >
                           {showTodayLine && (
                             <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
