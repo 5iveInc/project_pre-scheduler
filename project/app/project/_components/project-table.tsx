@@ -49,50 +49,37 @@ function buildAssigneeLabel(project: Project): string | null {
 
 function ProjectRow({
   project,
-  users,
-  allProjects,
   checked,
   onCheckedChange,
+  onEdit,
 }: {
   project: Project
-  users: User[]
-  allProjects: Project[]
   checked: boolean
   onCheckedChange: () => void
+  onEdit: (project: Project) => void
 }) {
-  const [open, setOpen] = useState(false)
   const label = buildAssigneeLabel(project)
 
   return (
-    <>
-      <TableRow
-        className="cursor-pointer"
-        data-state={checked ? "selected" : undefined}
-        onClick={() => setOpen(true)}
-      >
-        <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
-        </TableCell>
-        <TableCell className="font-medium">{project.name}</TableCell>
-        <TableCell className="text-muted-foreground">
-          {label ?? <span className="text-muted-foreground/50">未アサイン</span>}
-        </TableCell>
-        <TableCell className="text-muted-foreground">
-          {project.start_date ?? <span className="text-muted-foreground/50">—</span>}
-        </TableCell>
-        <TableCell className="pr-6 text-muted-foreground">
-          {project.end_date ?? <span className="text-muted-foreground/50">—</span>}
-        </TableCell>
-      </TableRow>
-
-      <ProjectEditModal
-        project={project}
-        users={users}
-        allProjects={allProjects}
-        open={open}
-        onOpenChange={setOpen}
-      />
-    </>
+    <TableRow
+      className="cursor-pointer"
+      data-state={checked ? "selected" : undefined}
+      onClick={() => onEdit(project)}
+    >
+      <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
+        <Checkbox checked={checked} onCheckedChange={onCheckedChange} />
+      </TableCell>
+      <TableCell className="font-medium">{project.name}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {label ?? <span className="text-muted-foreground/50">未アサイン</span>}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {project.start_date ?? <span className="text-muted-foreground/50">—</span>}
+      </TableCell>
+      <TableCell className="pr-6 text-muted-foreground">
+        {project.end_date ?? <span className="text-muted-foreground/50">—</span>}
+      </TableCell>
+    </TableRow>
   )
 }
 
@@ -110,6 +97,7 @@ export function ProjectTable({
   const [tab, setTab] = useState<Tab>("active")
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set())
   const [addOpen, setAddOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [isPending, startTransition] = useTransition()
 
   const activeProjects = projects.filter((p) => !p.archived && p.parent_id === null)
@@ -275,10 +263,9 @@ export function ProjectTable({
                 <ProjectRow
                   key={project.id}
                   project={project}
-                  users={users}
-                  allProjects={projects}
                   checked={checkedIds.has(project.id)}
                   onCheckedChange={() => toggleCheck(project.id)}
+                  onEdit={setEditingProject}
                 />
               ))
             )}
@@ -302,6 +289,16 @@ export function ProjectTable({
           </form>
         </DialogContent>
       </Dialog>
+
+      <ProjectEditModal
+        project={editingProject}
+        users={users}
+        allProjects={projects}
+        open={editingProject !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingProject(null)
+        }}
+      />
     </Card>
   )
 }

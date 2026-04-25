@@ -1,4 +1,4 @@
-import { createClient } from "@libsql/client"
+import { createClient, type InStatement } from "@libsql/client"
 
 const client = createClient({
   url: process.env.TURSO_DATABASE_URL!,
@@ -63,6 +63,17 @@ async function initSchema() {
       date TEXT NOT NULL,
       PRIMARY KEY (user_id, date)
     );
+    CREATE INDEX IF NOT EXISTS idx_projects_archived ON projects(archived);
+    CREATE INDEX IF NOT EXISTS idx_projects_parent_id ON projects(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_projects_start_date ON projects(start_date);
+    CREATE INDEX IF NOT EXISTS idx_projects_end_date ON projects(end_date);
+    CREATE INDEX IF NOT EXISTS idx_project_assignees_project_id ON project_assignees(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_assignees_user_id ON project_assignees(user_id);
+    CREATE INDEX IF NOT EXISTS idx_project_child_stakeholders_project_id ON project_child_stakeholders(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_key_dates_project_id ON project_key_dates(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_links_project_id ON project_links(project_id);
+    CREATE INDEX IF NOT EXISTS idx_project_stakeholders_project_id ON project_stakeholders(project_id);
+    CREATE INDEX IF NOT EXISTS idx_user_paid_leaves_user_id ON user_paid_leaves(user_id);
   `)
 
   // status カラムが未追加の場合のみ追加（既存DBへの後方互換マイグレーション）
@@ -156,6 +167,11 @@ export async function deleteUsers(ids: number[]): Promise<void> {
   await db.execute({ sql: `DELETE FROM users WHERE id IN (${placeholders})`, args: ids })
 }
 
+async function batchWrite(db: typeof client, statements: InStatement[]): Promise<void> {
+  if (statements.length === 0) return
+  await db.batch(statements, "write")
+}
+
 // ── Projects ──────────────────────────────────────────────
 
 export type KeyDate = { date: string; label: string }
@@ -209,9 +225,11 @@ type RawProject = {
   has_children: number
 }
 
-export async function getProjects(): Promise<Project[]> {
+async function getProjectsByWhere(whereSql = "", args: Array<string | number> = []): Promise<Project[]> {
   const db = await getClient()
-  const { rows } = await db.execute(`
+  const whereClause = whereSql ? `WHERE ${whereSql}` : ""
+  const { rows } = await db.execute({
+    sql: `
     SELECT
       p.id, p.name, p.status, p.client_name, p.start_date, p.end_date, p.memo, p.volume, p.archived, p.created_at,
       p.parent_id, p.assignee_type,
@@ -241,8 +259,11 @@ export async function getProjects(): Promise<Project[]> {
       (SELECT GROUP_CONCAT(pl.label || '|||' || pl.url, '~~~')
        FROM (SELECT label, url FROM project_links WHERE project_id = COALESCE(p.parent_id, p.id) ORDER BY id ASC) pl) AS links_str
     FROM projects p
+    ${whereClause}
     ORDER BY p.id ASC
-  `)
+  `,
+    args,
+  })
 
   return (rows as unknown as RawProject[]).map((row) => ({
     id: row.id,
@@ -277,48 +298,50 @@ export async function getProjects(): Promise<Project[]> {
   }))
 }
 
+export async function getProjects(): Promise<Project[]> {
+  return getProjectsByWhere()
+}
+
+export async function getActiveProjects(): Promise<Project[]> {
+  return getProjectsByWhere("p.archived = 0")
+}
+
 async function insertJunction(db: typeof client, table: string, projectId: number | bigint, userIds: number[]) {
-  for (const userId of userIds) {
-    await db.execute({
-      sql: `INSERT OR IGNORE INTO ${table} (project_id, user_id) VALUES (?, ?)`,
-      args: [projectId, userId],
-    })
-  }
+  await batchWrite(db, userIds.map((userId) => ({
+    sql: `INSERT OR IGNORE INTO ${table} (project_id, user_id) VALUES (?, ?)`,
+    args: [projectId, userId],
+  })))
 }
 
 async function replaceChildStakeholders(db: typeof client, projectId: number | bigint, stakeholderIds: number[]) {
-  await db.execute({ sql: "DELETE FROM project_child_stakeholders WHERE project_id=?", args: [projectId] })
-  for (const sid of stakeholderIds) {
-    await db.execute({
+  await batchWrite(db, [
+    { sql: "DELETE FROM project_child_stakeholders WHERE project_id=?", args: [projectId] },
+    ...stakeholderIds.map((sid) => ({
       sql: "INSERT OR IGNORE INTO project_child_stakeholders (project_id, stakeholder_id) VALUES (?, ?)",
       args: [projectId, sid],
-    })
-  }
+    })),
+  ])
 }
 
 async function replaceLinks(db: typeof client, projectId: number | bigint, links: ProjectLink[]) {
-  await db.execute({ sql: "DELETE FROM project_links WHERE project_id=?", args: [projectId] })
-  for (const link of links) {
-    if (link.url) {
-      await db.execute({
-        sql: "INSERT INTO project_links (project_id, label, url) VALUES (?, ?, ?)",
-        args: [projectId, link.label, link.url],
-      })
-    }
-  }
+  await batchWrite(db, [
+    { sql: "DELETE FROM project_links WHERE project_id=?", args: [projectId] },
+    ...links.filter((link) => link.url).map((link) => ({
+      sql: "INSERT INTO project_links (project_id, label, url) VALUES (?, ?, ?)",
+      args: [projectId, link.label, link.url],
+    })),
+  ])
 }
 
 async function replaceKeyDates(db: typeof client, projectId: number | bigint, keyDates: KeyDate[]) {
-  await db.execute({ sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [projectId] })
   const sorted = [...keyDates].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
-  for (const kd of sorted) {
-    if (kd.date) {
-      await db.execute({
-        sql: "INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)",
-        args: [projectId, kd.date, kd.label],
-      })
-    }
-  }
+  await batchWrite(db, [
+    { sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [projectId] },
+    ...sorted.filter((kd) => kd.date).map((kd) => ({
+      sql: "INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)",
+      args: [projectId, kd.date, kd.label],
+    })),
+  ])
 }
 
 export async function addProject(
@@ -384,20 +407,48 @@ export async function updateProject(
   stakeholderAssigneeIds: number[] = [],
 ): Promise<void> {
   const db = await getClient()
-  await db.execute({
-    sql: "UPDATE projects SET name=?, status=?, client_name=?, start_date=?, end_date=?, memo=?, volume=?, assignee_type=? WHERE id=?",
-    args: [name, status, clientName, startDate, endDate, memo, volume, assigneeType, id],
-  })
-  await db.execute({ sql: "DELETE FROM project_assignees WHERE project_id=?", args: [id] })
-  if (assigneeType === "5ive") await insertJunction(db, "project_assignees", id, assigneeIds)
-  await replaceChildStakeholders(db, id, assigneeType === "stakeholder" ? stakeholderAssigneeIds : [])
-  await replaceKeyDates(db, id, keyDates)
-  // リンクは親案件のみで管理。子タスク編集時はリンクに触れない
   const { rows: parentRows } = await db.execute({ sql: "SELECT parent_id FROM projects WHERE id=?", args: [id] })
   const parentId = (parentRows[0] as unknown as { parent_id: number | null })?.parent_id ?? null
-  if (parentId === null) {
-    await replaceLinks(db, id, links)
-  }
+  const sortedKeyDates = [...keyDates].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+  await batchWrite(db, [
+    {
+      sql: "UPDATE projects SET name=?, status=?, client_name=?, start_date=?, end_date=?, memo=?, volume=?, assignee_type=? WHERE id=?",
+      args: [name, status, clientName, startDate, endDate, memo, volume, assigneeType, id],
+    },
+    { sql: "DELETE FROM project_assignees WHERE project_id=?", args: [id] },
+    ...(
+      assigneeType === "5ive"
+        ? assigneeIds.map((userId) => ({
+            sql: "INSERT OR IGNORE INTO project_assignees (project_id, user_id) VALUES (?, ?)",
+            args: [id, userId],
+          }))
+        : []
+    ),
+    { sql: "DELETE FROM project_child_stakeholders WHERE project_id=?", args: [id] },
+    ...(
+      assigneeType === "stakeholder"
+        ? stakeholderAssigneeIds.map((stakeholderId) => ({
+            sql: "INSERT OR IGNORE INTO project_child_stakeholders (project_id, stakeholder_id) VALUES (?, ?)",
+            args: [id, stakeholderId],
+          }))
+        : []
+    ),
+    { sql: "DELETE FROM project_key_dates WHERE project_id=?", args: [id] },
+    ...sortedKeyDates.filter((kd) => kd.date).map((kd) => ({
+      sql: "INSERT INTO project_key_dates (project_id, date, label) VALUES (?, ?, ?)",
+      args: [id, kd.date, kd.label],
+    })),
+    // リンクは親案件のみで管理。子タスク編集時はリンクに触れない
+    ...(parentId === null
+      ? [
+          { sql: "DELETE FROM project_links WHERE project_id=?", args: [id] },
+          ...links.filter((link) => link.url).map((link) => ({
+            sql: "INSERT INTO project_links (project_id, label, url) VALUES (?, ?, ?)",
+            args: [id, link.label, link.url],
+          })),
+        ]
+      : []),
+  ])
 }
 
 export async function addStakeholder(projectId: number, name: string): Promise<Stakeholder> {
@@ -411,8 +462,10 @@ export async function addStakeholder(projectId: number, name: string): Promise<S
 
 export async function removeStakeholder(id: number): Promise<void> {
   const db = await getClient()
-  await db.execute({ sql: "DELETE FROM project_child_stakeholders WHERE stakeholder_id=?", args: [id] })
-  await db.execute({ sql: "DELETE FROM project_stakeholders WHERE id=?", args: [id] })
+  await batchWrite(db, [
+    { sql: "DELETE FROM project_child_stakeholders WHERE stakeholder_id=?", args: [id] },
+    { sql: "DELETE FROM project_stakeholders WHERE id=?", args: [id] },
+  ])
 }
 
 export async function updateProjectDates(
@@ -441,34 +494,41 @@ export async function deleteProjects(ids: number[]): Promise<void> {
   const allIds = [...ids, ...childIds]
   const allPlaceholders = allIds.map(() => "?").join(", ")
 
-  if (allIds.length > 0) {
-    await db.execute({ sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds })
-    await db.execute({ sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds })
-  }
-
-  await db.execute({ sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids })
-  await db.execute({ sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids })
+  await batchWrite(db, [
+    ...(allIds.length > 0
+      ? [
+          { sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds },
+          { sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds },
+          { sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds },
+          { sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds },
+          { sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds },
+        ]
+      : []),
+    { sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids },
+    { sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids },
+  ])
 }
 
 export async function archiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  await db.execute({ sql: `UPDATE projects SET archived=1 WHERE id IN (${placeholders})`, args: ids })
-  // 子タスクも同時にアーカイブ
-  await db.execute({ sql: `UPDATE projects SET archived=1 WHERE parent_id IN (${placeholders})`, args: ids })
+  await batchWrite(db, [
+    { sql: `UPDATE projects SET archived=1 WHERE id IN (${placeholders})`, args: ids },
+    // 子タスクも同時にアーカイブ
+    { sql: `UPDATE projects SET archived=1 WHERE parent_id IN (${placeholders})`, args: ids },
+  ])
 }
 
 export async function unarchiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
-  await db.execute({ sql: `UPDATE projects SET archived=0 WHERE id IN (${placeholders})`, args: ids })
-  // 子タスクも同時に復帰
-  await db.execute({ sql: `UPDATE projects SET archived=0 WHERE parent_id IN (${placeholders})`, args: ids })
+  await batchWrite(db, [
+    { sql: `UPDATE projects SET archived=0 WHERE id IN (${placeholders})`, args: ids },
+    // 子タスクも同時に復帰
+    { sql: `UPDATE projects SET archived=0 WHERE parent_id IN (${placeholders})`, args: ids },
+  ])
 }
 
 // ── Custom Holidays ────────────────────────────────────────
@@ -482,10 +542,10 @@ export async function getCustomHolidays(): Promise<string[]> {
 export async function setCustomHolidays(dates: string[]): Promise<void> {
   const db = await getClient()
   const valid = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-  await db.execute("DELETE FROM custom_holidays")
-  for (const date of valid) {
-    await db.execute({ sql: "INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)", args: [date] })
-  }
+  await batchWrite(db, [
+    { sql: "DELETE FROM custom_holidays" },
+    ...valid.map((date) => ({ sql: "INSERT OR IGNORE INTO custom_holidays (date) VALUES (?)", args: [date] })),
+  ])
 }
 
 // ── User Paid Leaves ───────────────────────────────────────
@@ -504,8 +564,11 @@ export async function getUserPaidLeaves(): Promise<Record<number, string[]>> {
 export async function setUserPaidLeaves(userId: number, dates: string[]): Promise<void> {
   const db = await getClient()
   const valid = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
-  await db.execute({ sql: "DELETE FROM user_paid_leaves WHERE user_id=?", args: [userId] })
-  for (const date of valid) {
-    await db.execute({ sql: "INSERT OR IGNORE INTO user_paid_leaves (user_id, date) VALUES (?, ?)", args: [userId, date] })
-  }
+  await batchWrite(db, [
+    { sql: "DELETE FROM user_paid_leaves WHERE user_id=?", args: [userId] },
+    ...valid.map((date) => ({
+      sql: "INSERT OR IGNORE INTO user_paid_leaves (user_id, date) VALUES (?, ?)",
+      args: [userId, date],
+    })),
+  ])
 }

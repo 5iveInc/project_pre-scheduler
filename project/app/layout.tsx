@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/layout/AppSidebar"
 import Header from "@/components/layout/Header"
-import Footer from "@/components/layout/Footer"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
