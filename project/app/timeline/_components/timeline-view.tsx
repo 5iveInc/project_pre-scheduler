@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useEffect, useRef, useMemo } from "react"
+import { useState, useTransition, useEffect, useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
@@ -438,11 +438,22 @@ export function TimelineView({
   customHolidays: string[]
   userPaidLeaves: Record<number, string[]>
 }) {
-  const holidaySet = new Set([...holidays, ...customHolidays])
-  const { start, end } = getDisplayRange(projects)
-  const dates = getDates(start, end)
-  const monthGroups = getMonthGroups(dates)
+  const holidaySet = useMemo(() => new Set([...holidays, ...customHolidays]), [holidays, customHolidays])
+  const { start, end } = useMemo(() => getDisplayRange(projects), [projects])
+  const dates = useMemo(() => getDates(start, end), [start, end])
+  const monthGroups = useMemo(() => getMonthGroups(dates), [dates])
   const totalDays = dates.length
+  const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const childrenByParentId = useMemo(() => {
+    const map = new Map<number, Project[]>()
+    for (const project of projects) {
+      if (project.parent_id === null) continue
+      const children = map.get(project.parent_id)
+      if (children) children.push(project)
+      else map.set(project.parent_id, [project])
+    }
+    return map
+  }, [projects])
 
   const todayLocal = new Date()
   todayLocal.setHours(0, 0, 0, 0)
@@ -540,6 +551,7 @@ export function TimelineView({
   }
 
   const [highlightedDateIndices, setHighlightedDateIndices] = useState<Set<number>>(new Set())
+  const highlightedDateIndexArray = useMemo(() => Array.from(highlightedDateIndices), [highlightedDateIndices])
 
   const [activeTab, setActiveTab] = useState("project")
 
@@ -580,12 +592,12 @@ export function TimelineView({
     setExpandedProjectIds((prev) => {
       const next = new Set(prev)
       for (const id of prev) {
-        const project = projects.find((p) => p.id === id)
+        const project = projectsById.get(id)
         if (!project || !project.has_children) next.delete(id)
       }
       return next
     })
-  }, [projects])
+  }, [projectsById])
 
   function toggleExpand(id: number) {
     setExpandedProjectIds((prev) => {
@@ -725,7 +737,7 @@ export function TimelineView({
     if (!isProjectFilterActive) return []
     const rows: Array<{ packedRow: Project[]; parentName: string }> = []
     for (const parent of visibleProjects.filter((p) => p.parent_id === null && p.has_children)) {
-      const children = projects.filter((c) => c.parent_id === parent.id)
+      const children = childrenByParentId.get(parent.id) ?? []
       const matched = children.filter((child) => {
         if (child.assignee_type === "client" || child.assignee_type === "stakeholder") return false
         if (child.assignee_ids.length === 0) return showUnassigned
@@ -737,7 +749,7 @@ export function TimelineView({
       }
     }
     return rows
-  }, [isProjectFilterActive, visibleProjects, projects, hiddenProjectUserIds, showUnassigned])
+  }, [isProjectFilterActive, visibleProjects, childrenByParentId, hiddenProjectUserIds, showUnassigned])
 
   function handleSortOption(key: SortKey) {
     if (sortKey === key) {
@@ -804,12 +816,13 @@ export function TimelineView({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
 
-  function isRestDay(d: Date): boolean {
-    return d.getDay() === 0 || d.getDay() === 6 || holidaySet.has(toYMD(d))
-  }
+  const isRestDay = useCallback((d: Date): boolean => {
+    const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+    return d.getDay() === 0 || d.getDay() === 6 || holidaySet.has(ymd)
+  }, [holidaySet])
 
   // 縦グリッド線 + 休日列（土日・祝日）の背景を background-image で合成
-  const rowBg = buildRowBg(dates, dayWidth, isRestDay)
+  const rowBg = useMemo(() => buildRowBg(dates, dayWidth, isRestDay), [dates, dayWidth, isRestDay])
   const totalMonthWidth = monthColWidth * 12
 
   const monthViewMonths = useMemo<MonthViewMonth[]>(() => {
@@ -833,6 +846,33 @@ export function TimelineView({
       await updateProjectDatesAction(id, newStart, newEnd)
     })
   })
+
+  const assignTimelineData = useMemo(() => {
+    const filteredProjects = projects
+      .filter((p) => !showOrderedOnly || p.status === "受注済")
+      .filter((p) => !hideParentBars || !p.has_children)
+      .filter((p) => p.parent_id === null || p.assignee_type === "5ive")
+    const assigneeUsers = users.filter((u) =>
+      filteredProjects.some((p) => p.assignee_ids.includes(u.id))
+    )
+    const visibleAssigneeUsers = assigneeUsers.filter((u) => !hiddenUserIds.has(u.id))
+    const userLaneData = visibleAssigneeUsers.map((u) => {
+      const userProjects = filteredProjects.filter((p) => p.assignee_ids.includes(u.id))
+      if (hideParentBars) {
+        const { assignments, laneCount } = calcLanes(userProjects)
+        return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount: 0 }
+      }
+      const parentProjects = userProjects.filter((p) => p.parent_id === null)
+      const childProjects = userProjects.filter((p) => p.parent_id !== null)
+      const { assignments: parentAssignments, laneCount: parentLaneCount } = calcLanes(parentProjects)
+      const { assignments: childAssignmentsRaw, laneCount: childLaneCount } = calcLanes(childProjects)
+      const childAssignments = childAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentLaneCount }))
+      const assignments = [...parentAssignments, ...childAssignments]
+      const laneCount = parentLaneCount + (childProjects.length > 0 ? childLaneCount : 0)
+      return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount }
+    })
+    return { assigneeUsers, userLaneData }
+  }, [projects, users, showOrderedOnly, hideParentBars, hiddenUserIds])
 
   const TABS = [
     { id: "project", label: "案件" },
@@ -1097,7 +1137,7 @@ export function TimelineView({
               ) : (
                 projectTabProjects.flatMap((p) => {
                   const isExpanded = expandedProjectIds.has(p.id)
-                  const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                  const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
                   const packedRows = isExpanded ? packChildTasks(childTasks) : []
                   return [
                     <button
@@ -1192,7 +1232,7 @@ export function TimelineView({
                 ) : (
                   projectTabProjects.flatMap((p) => {
                     const isExpanded = expandedProjectIds.has(p.id)
-                    const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                    const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
                     const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
                     const parentOverride = monthBarDrag.getBarOverride(p.id)
@@ -1240,7 +1280,7 @@ export function TimelineView({
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
                               {p.parent_id === null && <ContextMenuItem onClick={() => {
-                                const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
@@ -1417,7 +1457,7 @@ export function TimelineView({
               ) : (
                 projectTabProjects.flatMap((p) => {
                   const isExpanded = expandedProjectIds.has(p.id)
-                  const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                  const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
                   const packedRows = isExpanded ? packChildTasks(childTasks) : []
                   return [
                     <button
@@ -1479,7 +1519,7 @@ export function TimelineView({
                         {showTodayLine && (
                           <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
                         )}
-                        {Array.from(highlightedDateIndices).map((idx) => (
+                        {highlightedDateIndexArray.map((idx) => (
                           <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                         ))}
                         {packedRow.map((c) => {
@@ -1528,7 +1568,7 @@ export function TimelineView({
                 ) : (
                   projectTabProjects.flatMap((p) => {
                     const isExpanded = expandedProjectIds.has(p.id)
-                    const childTasks = p.has_children ? projects.filter((c) => c.parent_id === p.id) : []
+                    const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
                     const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
                     const parentOverride = barDrag.getBarOverride(p.id)
@@ -1567,7 +1607,7 @@ export function TimelineView({
                         {showTodayLine && (
                           <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
                         )}
-                        {Array.from(highlightedDateIndices).map((idx) => (
+                        {highlightedDateIndexArray.map((idx) => (
                           <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                         ))}
                         {parentBarLeft !== null && parentBarWidth !== null && (
@@ -1586,7 +1626,7 @@ export function TimelineView({
                             <ContextMenuContent>
                               <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
                               {p.parent_id === null && <ContextMenuItem onClick={() => {
-                                const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
@@ -1615,7 +1655,7 @@ export function TimelineView({
                           {showTodayLine && (
                             <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
                           )}
-                          {Array.from(highlightedDateIndices).map((idx) => (
+                          {highlightedDateIndexArray.map((idx) => (
                             <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
                           ))}
                           {rowChildren.map((c) => {
@@ -1666,31 +1706,7 @@ export function TimelineView({
 
       {/* ── 担当タブ ── */}
       {activeTab === "assign" && (() => {
-        const filteredProjects = projects
-          .filter((p) => !showOrderedOnly || p.status === "受注済")
-          .filter((p) => !hideParentBars || !p.has_children)
-          .filter((p) => p.parent_id === null || p.assignee_type === "5ive")
-        const assigneeUsers = users.filter((u) =>
-          filteredProjects.some((p) => p.assignee_ids.includes(u.id))
-        )
-        const visibleAssigneeUsers = assigneeUsers.filter((u) => !hiddenUserIds.has(u.id))
-        // ユーザーごとにレーン割り当てを事前計算
-        // 親表示中は親を上段・子を下段に分離。親非表示時はフラットに計算
-        const userLaneData = visibleAssigneeUsers.map((u) => {
-          const userProjects = filteredProjects.filter((p) => p.assignee_ids.includes(u.id))
-          if (hideParentBars) {
-            const { assignments, laneCount } = calcLanes(userProjects)
-            return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount: 0 }
-          }
-          const parentProjects = userProjects.filter((p) => p.parent_id === null)
-          const childProjects = userProjects.filter((p) => p.parent_id !== null)
-          const { assignments: parentAssignments, laneCount: parentLaneCount } = calcLanes(parentProjects)
-          const { assignments: childAssignmentsRaw, laneCount: childLaneCount } = calcLanes(childProjects)
-          const childAssignments = childAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentLaneCount }))
-          const assignments = [...parentAssignments, ...childAssignments]
-          const laneCount = parentLaneCount + (childProjects.length > 0 ? childLaneCount : 0)
-          return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount }
-        })
+        const { assigneeUsers, userLaneData } = assignTimelineData
 
         return (
           <>
@@ -1946,14 +1962,14 @@ export function TimelineView({
                                     >
                                       <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", p, e, monthViewScrollRef.current) }} />
                                       <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                        {p.parent_id !== null && projectsById.get(p.parent_id) && `${projectsById.get(p.parent_id)!.name} -> `}{p.name}
                                       </span>
                                       <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", p, e, monthViewScrollRef.current) }} />
                                     </ContextMenuTrigger>
                                     <ContextMenuContent>
                                       <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
                                       {p.parent_id === null && <ContextMenuItem onClick={() => {
-                                        const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                        const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
                                       }}>子タスクを追加</ContextMenuItem>}
@@ -2161,7 +2177,7 @@ export function TimelineView({
                               />
                             )}
                             {/* クリックハイライト列 */}
-                            {Array.from(highlightedDateIndices).map((idx) => (
+                            {highlightedDateIndexArray.map((idx) => (
                               <div
                                 key={idx}
                                 className="absolute top-0 bottom-0 pointer-events-none"
@@ -2216,7 +2232,7 @@ export function TimelineView({
                                         }}
                                       />
                                       <span className="px-2 text-xs text-white font-medium truncate leading-none">
-                                        {p.parent_id !== null && projects.find((pp) => pp.id === p.parent_id) && `${projects.find((pp) => pp.id === p.parent_id)!.name} -> `}{p.name}
+                                        {p.parent_id !== null && projectsById.get(p.parent_id) && `${projectsById.get(p.parent_id)!.name} -> `}{p.name}
                                       </span>
                                       <div
                                         className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize"
@@ -2229,7 +2245,7 @@ export function TimelineView({
                                     <ContextMenuContent>
                                       <ContextMenuItem onClick={() => setEditProject(p)}>編集する</ContextMenuItem>
                                       {p.parent_id === null && <ContextMenuItem onClick={() => {
-                                        const dates = calcQuickChildDates(p, projects.filter((c) => c.parent_id === p.id))
+                                        const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
                                       }}>子タスクを追加</ContextMenuItem>}
@@ -2282,7 +2298,7 @@ export function TimelineView({
       {/* 編集モーダル */}
       {editProject !== null && editProject.parent_id !== null ? (
         <ChildTaskModal
-          parentProject={projects.find((p) => p.id === editProject.parent_id)!}
+          parentProject={projectsById.get(editProject.parent_id)!}
           childTask={editProject}
           users={users}
           open={true}

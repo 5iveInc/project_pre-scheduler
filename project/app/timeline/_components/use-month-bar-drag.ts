@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import type { Project } from "@/database/db"
 
 type MonthViewMonth = { year: number; month: number; label: string; startDate: Date; endDate: Date }
@@ -63,10 +63,14 @@ export function useMonthBarDrag(
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null)
 
   const monthColWidthRef = useRef(monthColWidth)
-  monthColWidthRef.current = monthColWidth
+  useEffect(() => {
+    monthColWidthRef.current = monthColWidth
+  }, [monthColWidth])
 
   const monthsRef = useRef(months)
-  monthsRef.current = months
+  useEffect(() => {
+    monthsRef.current = months
+  }, [months])
 
   function startDrag(
     type: DragType,

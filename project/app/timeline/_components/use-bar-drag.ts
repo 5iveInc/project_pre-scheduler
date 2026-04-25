@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import type { Project } from "@/database/db"
 
 type DragType = "resize-start" | "resize-end" | "move"
@@ -47,7 +47,9 @@ export function useBarDrag(
 
   // dayWidth は drag 中も最新値を参照できるよう ref で持つ
   const dayWidthRef = useRef(dayWidth)
-  dayWidthRef.current = dayWidth
+  useEffect(() => {
+    dayWidthRef.current = dayWidth
+  }, [dayWidth])
 
   function clientXToDayIndex(clientX: number, scrollEl: HTMLElement): number {
     const rect = scrollEl.getBoundingClientRect()
