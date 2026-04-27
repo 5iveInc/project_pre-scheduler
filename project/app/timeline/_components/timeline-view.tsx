@@ -398,9 +398,19 @@ function DragDateTooltip({
 
 function BarHoverCardContent({ project, offDaySet }: { project: Project; offDaySet: Set<string> }) {
   const assigneeDisplay = project.assignee_names.length > 0 ? project.assignee_names.join("、") : "未設定"
-  const businessDays = project.start_date && project.end_date
+  const totalBusinessDays = project.start_date && project.end_date
     ? calcBusinessDays(project.start_date, project.end_date, offDaySet)
     : null
+  const remainingBusinessDays = (() => {
+    if (!project.end_date) return null
+    const today = new Date()
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
+    const endDate = parseLocalDate(project.end_date)
+    const todayDate = parseLocalDate(todayStr)
+    if (todayDate > endDate) return 0
+    const startStr = todayDate >= parseLocalDate(project.start_date ?? todayStr) ? todayStr : (project.start_date ?? todayStr)
+    return calcBusinessDays(startStr, project.end_date, offDaySet)
+  })()
   return (
     <div className="space-y-1.5 text-xs">
       <div>
@@ -410,10 +420,10 @@ function BarHoverCardContent({ project, offDaySet }: { project: Project; offDayS
         <span className="font-semibold">担当者：</span>
         <span>{assigneeDisplay}</span>
       </div>
-      {businessDays !== null && (
+      {totalBusinessDays !== null && (
         <div>
-          <span className="font-semibold">営業日：</span>
-          <span>{businessDays}日</span>
+          <span className="font-semibold">営業日（残/計）：</span>
+          <span>{remainingBusinessDays}日/{totalBusinessDays}日</span>
         </div>
       )}
       {project.memo && (
