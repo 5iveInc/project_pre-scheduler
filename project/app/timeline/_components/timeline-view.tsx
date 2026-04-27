@@ -404,6 +404,9 @@ function BarHoverCardContent({ project, offDaySet }: { project: Project; offDayS
   return (
     <div className="space-y-1.5 text-xs">
       <div>
+        <div className="font-semibold text-sm leading-snug pb-1 border-b border-gray-300">{project.name}</div>
+      </div>
+      <div>
         <span className="font-semibold">担当者：</span>
         <span>{assigneeDisplay}</span>
       </div>
