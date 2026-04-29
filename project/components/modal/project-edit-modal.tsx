@@ -534,7 +534,7 @@ export function ProjectFormFields({
         </div>
         {childTasks && childTasks.length > 0 && (
           <div className="w-[30%] shrink-0 space-y-1.5">
-            <Label>子タスク一覧</Label>
+            <Label>フェーズ一覧</Label>
             <div className="flex flex-col gap-2 rounded-lg border border-input p-3 h-[500px] overflow-auto">
               {childTasks.map((task) => (
                 <div key={task.id} className="flex items-start gap-1 rounded-md hover:bg-muted transition-colors">
@@ -622,7 +622,7 @@ export function ChildTaskModal({
       <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle>
-            {childTask ? "子タスクを編集" : "子タスクを追加"}
+            {childTask ? "フェーズを編集" : "フェーズを追加"}
             <span className="ml-2 text-sm font-normal text-muted-foreground">({parentProject.name})</span>
           </DialogTitle>
         </DialogHeader>
@@ -870,7 +870,7 @@ export function ProjectEditModal({
                     disabled={isPending}
                     onClick={() => setChildModalOpen(true)}
                   >
-                    <GitForkIcon className="mr-1" />子タスクを作成
+                    <GitForkIcon className="mr-1" />フェーズを作成
                   </Button>
                   <Button type="submit" disabled={isPending}>
                     保存する
@@ -902,7 +902,7 @@ export function ProjectEditModal({
     <Dialog open={confirmDeleteTask !== null} onOpenChange={(open) => { if (!open) setConfirmDeleteTask(null) }}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>子タスクを削除</DialogTitle>
+          <DialogTitle>フェーズを削除</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           「{confirmDeleteTask?.name}」を削除しますか？この操作は取り消せません。

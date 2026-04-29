@@ -1159,7 +1159,7 @@ export function TimelineView({
                       style={{ height: ROW_HEIGHT }}
                       className="w-full border-b flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
-                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                      title={p.has_children ? `${p.name}（クリックでフェーズを展開）` : `${p.name}（クリックで編集）`}
                     >
                       {p.has_children && (
                         <ChevronRightIcon
@@ -1175,7 +1175,7 @@ export function TimelineView({
                         className="w-full border-b flex items-center gap-2 pl-8 pr-3 bg-muted/20"
                       >
                         {rowIdx === 0 && (
-                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
+                          <span className="text-xs font-medium text-muted-foreground">フェーズ</span>
                         )}
                       </div>
                     )),
@@ -1230,7 +1230,7 @@ export function TimelineView({
                               </ContextMenuTrigger>
                               <ContextMenuContent>
                                 <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
                           )
@@ -1297,7 +1297,7 @@ export function TimelineView({
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
-                              }}>子タスクを追加</ContextMenuItem>}
+                              }}>フェーズを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1353,7 +1353,7 @@ export function TimelineView({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
                             )
@@ -1479,7 +1479,7 @@ export function TimelineView({
                       style={{ height: ROW_HEIGHT }}
                       className={`w-full border-b ${!isExpanded ? "border-black" : ""} flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer`}
                       onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
-                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                      title={p.has_children ? `${p.name}（クリックでフェーズを展開）` : `${p.name}（クリックで編集）`}
                     >
                       {p.has_children && (
                         <ChevronRightIcon
@@ -1495,7 +1495,7 @@ export function TimelineView({
                         className={`w-full border-b ${rowIdx === packedRows.length - 1 ? "border-black" : ""} flex items-center pl-8 pr-3 bg-muted/20`}
                       >
                         {rowIdx === 0 && (
-                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
+                          <span className="text-xs font-medium text-muted-foreground">フェーズ</span>
                         )}
                       </div>
                     )),
@@ -1563,7 +1563,7 @@ export function TimelineView({
                               </ContextMenuTrigger>
                               <ContextMenuContent>
                                 <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
                           )
@@ -1643,7 +1643,7 @@ export function TimelineView({
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
-                              }}>子タスクを追加</ContextMenuItem>}
+                              }}>フェーズを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1699,7 +1699,7 @@ export function TimelineView({
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
                                   <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
                             )
@@ -1985,8 +1985,8 @@ export function TimelineView({
                                         const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
-                                      }}>子タスクを追加</ContextMenuItem>}
-                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
+                                      }}>フェーズを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>フェーズを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -2261,8 +2261,8 @@ export function TimelineView({
                                         const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
-                                      }}>子タスクを追加</ContextMenuItem>}
-                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
+                                      }}>フェーズを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>フェーズを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {/* 日付メモの赤丸 */}
@@ -2332,7 +2332,7 @@ export function TimelineView({
         <Dialog open={true} onOpenChange={(open) => { if (!open) setDeleteConfirmTask(null) }}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
-              <DialogTitle>子タスクを削除</DialogTitle>
+              <DialogTitle>フェーズを削除</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">「{deleteConfirmTask.name}」を削除しますか？この操作は元に戻せません。</p>
             <DialogFooter>
