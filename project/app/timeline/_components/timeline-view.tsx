@@ -59,11 +59,11 @@ const VOLUME_COLORS: Record<number, string> = {
 }
 
 const VOLUME_WORK_COLORS: Record<number, string> = {
-  1: "#ede9fe", // violet-100
+  1: "#ddd6ff", // violet-200　
   2: "#c4b5fd", // violet-300
   3: "#a78bfa", // violet-400
-  4: "#7c3aed", // violet-600
-  5: "#5b21b6", // violet-800
+  4: "#8e51ff", // violet-500
+  5: "#7c3aed", // violet-600
 }
 
 function barColorFromVolume(volume: number | null): string {
@@ -1316,7 +1316,7 @@ export function TimelineView({
                     const isParentDragging = monthBarDrag.draggingId === p.id
                     const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
                     const parentKeyDates = Object.entries(
-                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
+                      [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
                         ;(acc[kd.date] ??= []).push(kd.label || kd.date)
                         return acc
@@ -1446,24 +1446,6 @@ export function TimelineView({
                                   </ContextMenu>
                                 )
                               })}
-                              {workRow.flatMap((work) =>
-                                Object.entries(
-                                  work.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                                    if (!kd.date) return acc
-                                    ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                                    return acc
-                                  }, {})
-                                ).map(([date, labels]) => {
-                                  const centerPct = keyDateToCenterPct(parseLocalDate(date), monthViewMonths)
-                                  if (centerPct === null) return null
-                                  return (
-                                    <Tooltip key={`${work.id}-${date}`}>
-                                      <TooltipTrigger className="absolute rounded-full z-10 cursor-default" style={{ left: `calc(${centerPct}% - 5px)`, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }} />
-                                      <TooltipContent><span className="whitespace-pre-line">{labels.join("\n")}</span></TooltipContent>
-                                    </Tooltip>
-                                  )
-                                })
-                              )}
                             </div>
                           )),
                         ]
@@ -1728,7 +1710,7 @@ export function TimelineView({
                     const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
                     const isParentDragging = barDrag.draggingId === p.id
                     const allKeyDatesForParentDay = Object.entries(
-                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
+                      [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
                         ;(acc[kd.date] ??= []).push(kd.label || kd.date)
                         return acc
@@ -1885,24 +1867,6 @@ export function TimelineView({
                                   </ContextMenu>
                                 )
                               })}
-                              {workRow.flatMap((work) =>
-                                Object.entries(
-                                  work.key_dates.reduce<Record<string, string[]>>((acc, kd) => {
-                                    if (!kd.date) return acc
-                                    ;(acc[kd.date] ??= []).push(kd.label || kd.date)
-                                    return acc
-                                  }, {})
-                                ).map(([date, labels]) => {
-                                  const kdIdx = dayDiff(start, parseLocalDate(date))
-                                  if (kdIdx < 0 || kdIdx >= totalDays) return null
-                                  return (
-                                    <Tooltip key={`${work.id}-${date}`}>
-                                      <TooltipTrigger className="absolute rounded-full z-10 cursor-default" style={{ left: kdIdx * dayWidth + dayWidth / 2 - 5, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }} />
-                                      <TooltipContent><span className="whitespace-pre-line">{labels.join("\n")}</span></TooltipContent>
-                                    </Tooltip>
-                                  )
-                                })
-                              )}
                             </div>
                           )),
                         ]
