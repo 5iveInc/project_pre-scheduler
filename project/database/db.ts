@@ -485,27 +485,34 @@ export async function deleteProjects(ids: number[]): Promise<void> {
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
 
-  // 子タスクのIDを取得（関連データ削除に必要）
+  // 子タスク（フェーズ）のIDを取得
   const { rows: childRows } = await db.execute({
     sql: `SELECT id FROM projects WHERE parent_id IN (${placeholders})`,
     args: ids,
   })
   const childIds = (childRows as unknown as { id: number }[]).map((r) => r.id)
-  const allIds = [...ids, ...childIds]
+
+  // 孫タスク（ワーク）のIDを取得
+  let grandchildIds: number[] = []
+  if (childIds.length > 0) {
+    const childPlaceholders = childIds.map(() => "?").join(", ")
+    const { rows: grandchildRows } = await db.execute({
+      sql: `SELECT id FROM projects WHERE parent_id IN (${childPlaceholders})`,
+      args: childIds,
+    })
+    grandchildIds = (grandchildRows as unknown as { id: number }[]).map((r) => r.id)
+  }
+
+  const allIds = [...ids, ...childIds, ...grandchildIds]
   const allPlaceholders = allIds.map(() => "?").join(", ")
 
   await batchWrite(db, [
-    ...(allIds.length > 0
-      ? [
-          { sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds },
-          { sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds },
-          { sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds },
-          { sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds },
-          { sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds },
-        ]
-      : []),
-    { sql: `DELETE FROM projects WHERE parent_id IN (${placeholders})`, args: ids },
-    { sql: `DELETE FROM projects WHERE id IN (${placeholders})`, args: ids },
+    { sql: `DELETE FROM project_assignees          WHERE project_id IN (${allPlaceholders})`, args: allIds },
+    { sql: `DELETE FROM project_child_stakeholders WHERE project_id IN (${allPlaceholders})`, args: allIds },
+    { sql: `DELETE FROM project_key_dates          WHERE project_id IN (${allPlaceholders})`, args: allIds },
+    { sql: `DELETE FROM project_links              WHERE project_id IN (${allPlaceholders})`, args: allIds },
+    { sql: `DELETE FROM project_stakeholders       WHERE project_id IN (${allPlaceholders})`, args: allIds },
+    { sql: `DELETE FROM projects                   WHERE id         IN (${allPlaceholders})`, args: allIds },
   ])
 }
 
@@ -513,10 +520,27 @@ export async function archiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
+
+  const { rows: childRows } = await db.execute({
+    sql: `SELECT id FROM projects WHERE parent_id IN (${placeholders})`,
+    args: ids,
+  })
+  const childIds = (childRows as unknown as { id: number }[]).map((r) => r.id)
+
+  let grandchildIds: number[] = []
+  if (childIds.length > 0) {
+    const childPlaceholders = childIds.map(() => "?").join(", ")
+    const { rows: grandchildRows } = await db.execute({
+      sql: `SELECT id FROM projects WHERE parent_id IN (${childPlaceholders})`,
+      args: childIds,
+    })
+    grandchildIds = (grandchildRows as unknown as { id: number }[]).map((r) => r.id)
+  }
+
+  const allIds = [...ids, ...childIds, ...grandchildIds]
+  const allPlaceholders = allIds.map(() => "?").join(", ")
   await batchWrite(db, [
-    { sql: `UPDATE projects SET archived=1 WHERE id IN (${placeholders})`, args: ids },
-    // 子タスクも同時にアーカイブ
-    { sql: `UPDATE projects SET archived=1 WHERE parent_id IN (${placeholders})`, args: ids },
+    { sql: `UPDATE projects SET archived=1 WHERE id IN (${allPlaceholders})`, args: allIds },
   ])
 }
 
@@ -524,10 +548,27 @@ export async function unarchiveProjects(ids: number[]): Promise<void> {
   if (ids.length === 0) return
   const db = await getClient()
   const placeholders = ids.map(() => "?").join(", ")
+
+  const { rows: childRows } = await db.execute({
+    sql: `SELECT id FROM projects WHERE parent_id IN (${placeholders})`,
+    args: ids,
+  })
+  const childIds = (childRows as unknown as { id: number }[]).map((r) => r.id)
+
+  let grandchildIds: number[] = []
+  if (childIds.length > 0) {
+    const childPlaceholders = childIds.map(() => "?").join(", ")
+    const { rows: grandchildRows } = await db.execute({
+      sql: `SELECT id FROM projects WHERE parent_id IN (${childPlaceholders})`,
+      args: childIds,
+    })
+    grandchildIds = (grandchildRows as unknown as { id: number }[]).map((r) => r.id)
+  }
+
+  const allIds = [...ids, ...childIds, ...grandchildIds]
+  const allPlaceholders = allIds.map(() => "?").join(", ")
   await batchWrite(db, [
-    { sql: `UPDATE projects SET archived=0 WHERE id IN (${placeholders})`, args: ids },
-    // 子タスクも同時に復帰
-    { sql: `UPDATE projects SET archived=0 WHERE parent_id IN (${placeholders})`, args: ids },
+    { sql: `UPDATE projects SET archived=0 WHERE id IN (${allPlaceholders})`, args: allIds },
   ])
 }
 

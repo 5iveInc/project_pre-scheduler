@@ -576,12 +576,14 @@ export function ChildTaskModal({
   users,
   open,
   onOpenChange,
+  taskLabel = "フェーズ",
 }: {
   parentProject: Project
   childTask?: Project | null
   users: User[]
   open: boolean
   onOpenChange: (open: boolean) => void
+  taskLabel?: string
 }) {
   const [isPending, startTransition] = useTransition()
 
@@ -622,7 +624,7 @@ export function ChildTaskModal({
       <DialogContent className="sm:max-w-300 max-h-[95dvh] overflow-auto">
         <DialogHeader>
           <DialogTitle>
-            {childTask ? "フェーズを編集" : "フェーズを追加"}
+            {childTask ? `${taskLabel}を編集` : `${taskLabel}を追加`}
             <span className="ml-2 text-sm font-normal text-muted-foreground">({parentProject.name})</span>
           </DialogTitle>
         </DialogHeader>
