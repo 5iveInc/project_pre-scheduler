@@ -58,8 +58,20 @@ const VOLUME_COLORS: Record<number, string> = {
   5: "#2563eb", // blue-600
 }
 
+const VOLUME_WORK_COLORS: Record<number, string> = {
+  1: "#ddd6ff", // violet-200　
+  2: "#c4b5fd", // violet-300
+  3: "#a78bfa", // violet-400
+  4: "#8e51ff", // violet-500
+  5: "#7c3aed", // violet-600
+}
+
 function barColorFromVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_COLORS[volume] ?? VOLUME_COLORS[3]) : VOLUME_COLORS[3]
+}
+
+function barColorFromWork(volume: number | null): string {
+  return volume !== null ? (VOLUME_WORK_COLORS[volume] ?? VOLUME_WORK_COLORS[3]) : VOLUME_WORK_COLORS[3]
 }
 
 function barColorFromParentVolume(volume: number | null): string {
@@ -600,6 +612,24 @@ export function TimelineView({
   }, [viewMode, activeTab])
 
   const [expandedProjectIds, setExpandedProjectIds] = useState<Set<number>>(new Set())
+  const [expandedPhaseIds, setExpandedPhaseIds] = useState<Set<number>>(new Set())
+  const addWorkDirectly = (phase: Project) => {
+    const existingWorks = childrenByParentId.get(phase.id) ?? []
+    const worksWithEnd = existingWorks.filter((w) => w.end_date !== null)
+    let sd: string
+    if (existingWorks.length === 0 || worksWithEnd.length < existingWorks.length) {
+      sd = phase.start_date ?? toYMD(new Date())
+    } else {
+      const latestEnd = worksWithEnd.reduce((latest, w) => w.end_date! > latest ? w.end_date! : latest, "")
+      const d = parseLocalDate(latestEnd)
+      d.setDate(d.getDate() + 1)
+      sd = toYMD(d)
+    }
+    const endD = parseLocalDate(sd)
+    endD.setDate(endD.getDate() + 6)
+    setExpandedPhaseIds((prev) => new Set(prev).add(phase.id))
+    startTransition(async () => { await quickAddChildTaskAction(phase.id, phase.status, sd, toYMD(endD)) })
+  }
 
   useEffect(() => {
     setExpandedProjectIds((prev) => {
@@ -610,10 +640,27 @@ export function TimelineView({
       }
       return next
     })
+    setExpandedPhaseIds((prev) => {
+      const next = new Set(prev)
+      for (const id of prev) {
+        const phase = projectsById.get(id)
+        if (!phase || !phase.has_children) next.delete(id)
+      }
+      return next
+    })
   }, [projectsById])
 
   function toggleExpand(id: number) {
     setExpandedProjectIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function togglePhaseExpand(id: number) {
+    setExpandedPhaseIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -1151,7 +1198,6 @@ export function TimelineView({
                 projectTabProjects.flatMap((p) => {
                   const isExpanded = expandedProjectIds.has(p.id)
                   const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
-                  const packedRows = isExpanded ? packChildTasks(childTasks) : []
                   return [
                     <button
                       key={p.id}
@@ -1159,7 +1205,7 @@ export function TimelineView({
                       style={{ height: ROW_HEIGHT }}
                       className="w-full border-b flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
-                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                      title={p.has_children ? `${p.name}（クリックでフェーズを展開）` : `${p.name}（クリックで編集）`}
                     >
                       {p.has_children && (
                         <ChevronRightIcon
@@ -1168,17 +1214,35 @@ export function TimelineView({
                       )}
                       <span className="text-sm font-medium truncate">{p.name}</span>
                     </button>,
-                    ...packedRows.map((_, rowIdx) => (
-                      <div
-                        key={`child-row-${p.id}-${rowIdx}`}
-                        style={{ height: ROW_HEIGHT }}
-                        className="w-full border-b flex items-center gap-2 pl-8 pr-3 bg-muted/20"
-                      >
-                        {rowIdx === 0 && (
-                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
-                        )}
-                      </div>
-                    )),
+                    ...(isExpanded ? childTasks.flatMap((phase) => {
+                      const isPhaseExpanded = expandedPhaseIds.has(phase.id)
+                      const works = phase.has_children ? (childrenByParentId.get(phase.id) ?? []) : []
+                      const packedWorkRows = isPhaseExpanded ? packChildTasks(works) : []
+                      return [
+                        <button
+                          key={`phase-left-${phase.id}`}
+                          type="button"
+                          style={{ height: ROW_HEIGHT }}
+                          className="w-full border-b flex items-center gap-1.5 pl-7 pr-3 bg-muted/20 text-left hover:bg-muted/40 transition-colors cursor-pointer"
+                          onClick={() => phase.has_children ? togglePhaseExpand(phase.id) : setEditProject(phase)}
+                          title={phase.has_children ? `${phase.name}（クリックでワークを展開）` : `${phase.name}（クリックで編集）`}
+                        >
+                          {phase.has_children && (
+                            <ChevronRightIcon className={`shrink-0 size-3 text-muted-foreground transition-transform ${isPhaseExpanded ? "rotate-90" : ""}`} />
+                          )}
+                          <span className="text-xs truncate text-muted-foreground">{phase.name}</span>
+                        </button>,
+                        ...packedWorkRows.map((_, wRowIdx) => (
+                          <div
+                            key={`work-left-month-${phase.id}-${wRowIdx}`}
+                            style={{ height: ROW_HEIGHT }}
+                            className="w-full border-b flex items-center pl-12 pr-3 bg-violet-50/60"
+                          >
+                            {wRowIdx === 0 && <span className="text-xs text-violet-400">ワーク</span>}
+                          </div>
+                        )),
+                      ]
+                    }) : []),
                   ]
                 })
               )}
@@ -1230,7 +1294,7 @@ export function TimelineView({
                               </ContextMenuTrigger>
                               <ContextMenuContent>
                                 <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
                           )
@@ -1246,15 +1310,13 @@ export function TimelineView({
                   projectTabProjects.flatMap((p) => {
                     const isExpanded = expandedProjectIds.has(p.id)
                     const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
-                    const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
                     const parentOverride = monthBarDrag.getBarOverride(p.id)
                     const parentBarInfo = calcMonthViewBar(parentOverride ?? p, monthViewMonths)
                     const isParentDragging = monthBarDrag.draggingId === p.id
                     const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
-                    // 親 + 全子タスクの key_dates を親行に常に集約して表示
                     const parentKeyDates = Object.entries(
-                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
+                      [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
                         ;(acc[kd.date] ??= []).push(kd.label || kd.date)
                         return acc
@@ -1275,13 +1337,7 @@ export function TimelineView({
                           <ContextMenu>
                             <ContextMenuTrigger
                               className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isParentDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                              style={{
-                                left: `${parentBarInfo.leftPct}%`,
-                                width: `${parentBarInfo.widthPct}%`,
-                                top: 10,
-                                bottom: 10,
-                                backgroundColor: parentBarColor,
-                              }}
+                              style={{ left: `${parentBarInfo.leftPct}%`, width: `${parentBarInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: parentBarColor }}
                               onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
                               onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                               onMouseLeave={() => setBarHoverCard(null)}
@@ -1297,7 +1353,7 @@ export function TimelineView({
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
-                              }}>子タスクを追加</ContextMenuItem>}
+                              }}>フェーズを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1306,60 +1362,94 @@ export function TimelineView({
                           if (centerPct === null) return null
                           return (
                             <Tooltip key={date}>
-                              <TooltipTrigger
-                                className="absolute rounded-full z-10 cursor-default"
-                                style={{ left: `calc(${centerPct}% - 5px)`, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }}
-                              />
+                              <TooltipTrigger className="absolute rounded-full z-10 cursor-default" style={{ left: `calc(${centerPct}% - 5px)`, top: ROW_HEIGHT / 2 - 5, width: 10, height: 10, backgroundColor: "#ef4444" }} />
                               <TooltipContent><span className="whitespace-pre-line">{labels.join("\n")}</span></TooltipContent>
                             </Tooltip>
                           )
                         })}
                       </div>,
-                      // 子タスクパック行
-                      ...packedRows.map((rowChildren, rowIdx) => (
-                        <div
-                          key={`child-row-${p.id}-${rowIdx}`}
-                          style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
-                          className="flex border-b bg-muted/20"
-                        >
-                          {monthViewMonths.map((m) => (
-                            <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
-                          ))}
-                          {rowChildren.map((c) => {
-                            const override = monthBarDrag.getBarOverride(c.id)
-                            const barInfo = calcMonthViewBar(override ?? c, monthViewMonths)
-                            if (!barInfo) return null
-                            const barColor = barColorFromProject(c, true)
-                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
-                            const isThisDragging = monthBarDrag.draggingId === c.id
-                            return (
-                              <ContextMenu key={c.id}>
+                      // フェーズ行（1フェーズ1行）＋ワーク行
+                      ...(isExpanded ? childTasks.flatMap((phase) => {
+                        const isPhaseExpanded = expandedPhaseIds.has(phase.id)
+                        const works = phase.has_children ? (childrenByParentId.get(phase.id) ?? []) : []
+                        const packedWorkRows = isPhaseExpanded ? packChildTasks(works) : []
+                        const phaseOverride = monthBarDrag.getBarOverride(phase.id)
+                        const phaseBarInfo = calcMonthViewBar(phaseOverride ?? phase, monthViewMonths)
+                        const isPhaseBarDragging = monthBarDrag.draggingId === phase.id
+                        const phaseBarColor = barColorFromProject(phase, true)
+                        const isDarkPhase = phase.assignee_type === "stakeholder" && phase.stakeholder_assignee_ids.length > 0
+
+                        return [
+                          // フェーズバー行
+                          <div
+                            key={`phase-bar-month-${phase.id}`}
+                            style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
+                            className="flex border-b bg-muted/20"
+                          >
+                            {monthViewMonths.map((m) => (
+                              <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                            ))}
+                            {phaseBarInfo && (
+                              <ContextMenu>
                                 <ContextMenuTrigger
-                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                  style={{
-                                    left: `${barInfo.leftPct}%`,
-                                    width: `${barInfo.widthPct}%`,
-                                    top: 10,
-                                    bottom: 10,
-                                    backgroundColor: barColor,
-                                  }}
-                                  onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", c, e, monthViewScrollRef.current) }}
-                                  onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isPhaseBarDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                  style={{ left: `${phaseBarInfo.leftPct}%`, width: `${phaseBarInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: phaseBarColor }}
+                                  onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", phase, e, monthViewScrollRef.current) }}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                                   onMouseLeave={() => setBarHoverCard(null)}
                                 >
-                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", c, e, monthViewScrollRef.current) }} />
-                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", c, e, monthViewScrollRef.current) }} />
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", phase, e, monthViewScrollRef.current) }} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDarkPhase ? "text-gray-800" : "text-white"}`}>{phase.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", phase, e, monthViewScrollRef.current) }} />
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
-                                  <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                  <ContextMenuItem onClick={() => setEditProject(phase)}>編集する</ContextMenuItem>
+                                  <ContextMenuItem onClick={() => addWorkDirectly(phase)}>ワークを追加</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(phase)}>フェーズを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
-                            )
-                          })}
-                        </div>
-                      )),
+                            )}
+                          </div>,
+                          // ワーク行（パック）
+                          ...packedWorkRows.map((workRow, wRowIdx) => (
+                            <div
+                              key={`work-bar-month-${phase.id}-${wRowIdx}`}
+                              style={{ height: ROW_HEIGHT, width: totalMonthWidth, position: "relative" }}
+                              className="flex border-b bg-violet-50/30"
+                            >
+                              {monthViewMonths.map((m) => (
+                                <div key={m.label} style={{ width: monthColWidth, minWidth: monthColWidth, flexShrink: 0 }} className="border-r last:border-r-0 h-full" />
+                              ))}
+                              {workRow.map((work) => {
+                                const workOverride = monthBarDrag.getBarOverride(work.id)
+                                const workBarInfo = calcMonthViewBar(workOverride ?? work, monthViewMonths)
+                                if (!workBarInfo) return null
+                                const workBarColor = barColorFromWork(work.volume)
+                                const isWorkDragging = monthBarDrag.draggingId === work.id
+                                return (
+                                  <ContextMenu key={work.id}>
+                                    <ContextMenuTrigger
+                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isWorkDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                      style={{ left: `${workBarInfo.leftPct}%`, width: `${workBarInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: workBarColor }}
+                                      onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", work, e, monthViewScrollRef.current) }}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                      onMouseLeave={() => setBarHoverCard(null)}
+                                    >
+                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", work, e, monthViewScrollRef.current) }} />
+                                      <span className="px-2 text-xs font-medium truncate leading-none text-white">{work.name}</span>
+                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-end", work, e, monthViewScrollRef.current) }} />
+                                    </ContextMenuTrigger>
+                                    <ContextMenuContent>
+                                      <ContextMenuItem onClick={() => setEditProject(work)}>編集する</ContextMenuItem>
+                                      <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(work)}>ワークを削除</ContextMenuItem>
+                                    </ContextMenuContent>
+                                  </ContextMenu>
+                                )
+                              })}
+                            </div>
+                          )),
+                        ]
+                      }) : []),
                     ]
                   })
                 )}
@@ -1471,7 +1561,6 @@ export function TimelineView({
                 projectTabProjects.flatMap((p) => {
                   const isExpanded = expandedProjectIds.has(p.id)
                   const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
-                  const packedRows = isExpanded ? packChildTasks(childTasks) : []
                   return [
                     <button
                       key={p.id}
@@ -1479,7 +1568,7 @@ export function TimelineView({
                       style={{ height: ROW_HEIGHT }}
                       className={`w-full border-b ${!isExpanded ? "border-black" : ""} flex items-center gap-2 px-3 text-left hover:bg-muted/50 transition-colors cursor-pointer`}
                       onClick={() => p.has_children ? toggleExpand(p.id) : setEditProject(p)}
-                      title={p.has_children ? `${p.name}（クリックで子タスクを展開）` : `${p.name}（クリックで編集）`}
+                      title={p.has_children ? `${p.name}（クリックでフェーズを展開）` : `${p.name}（クリックで編集）`}
                     >
                       {p.has_children && (
                         <ChevronRightIcon
@@ -1488,17 +1577,37 @@ export function TimelineView({
                       )}
                       <span className="text-sm font-medium truncate">{p.name}</span>
                     </button>,
-                    ...packedRows.map((_, rowIdx) => (
-                      <div
-                        key={`child-left-${p.id}-${rowIdx}`}
-                        style={{ height: ROW_HEIGHT }}
-                        className={`w-full border-b ${rowIdx === packedRows.length - 1 ? "border-black" : ""} flex items-center pl-8 pr-3 bg-muted/20`}
-                      >
-                        {rowIdx === 0 && (
-                          <span className="text-xs font-medium text-muted-foreground">子タスク</span>
-                        )}
-                      </div>
-                    )),
+                    ...(isExpanded ? childTasks.flatMap((phase, phaseIdx) => {
+                      const isPhaseExpanded = expandedPhaseIds.has(phase.id)
+                      const works = phase.has_children ? (childrenByParentId.get(phase.id) ?? []) : []
+                      const packedWorkRows = isPhaseExpanded ? packChildTasks(works) : []
+                      const isLastPhase = phaseIdx === childTasks.length - 1
+                      const hasWorkRows = packedWorkRows.length > 0
+                      return [
+                        <button
+                          key={`phase-left-day-${phase.id}`}
+                          type="button"
+                          style={{ height: ROW_HEIGHT }}
+                          className={`w-full border-b ${isLastPhase && !hasWorkRows ? "border-black" : ""} flex items-center gap-1.5 pl-7 pr-3 bg-muted/20 text-left hover:bg-muted/40 transition-colors cursor-pointer`}
+                          onClick={() => phase.has_children ? togglePhaseExpand(phase.id) : setEditProject(phase)}
+                          title={phase.has_children ? `${phase.name}（クリックでワークを展開）` : `${phase.name}（クリックで編集）`}
+                        >
+                          {phase.has_children && (
+                            <ChevronRightIcon className={`shrink-0 size-3 text-muted-foreground transition-transform ${isPhaseExpanded ? "rotate-90" : ""}`} />
+                          )}
+                          <span className="text-xs truncate text-muted-foreground">{phase.name}</span>
+                        </button>,
+                        ...packedWorkRows.map((_, wRowIdx) => (
+                          <div
+                            key={`work-left-day-${phase.id}-${wRowIdx}`}
+                            style={{ height: ROW_HEIGHT }}
+                            className={`w-full border-b ${isLastPhase && wRowIdx === packedWorkRows.length - 1 ? "border-black" : ""} flex items-center pl-12 pr-3 bg-violet-50/60`}
+                          >
+                            {wRowIdx === 0 && <span className="text-xs text-violet-400">ワーク</span>}
+                          </div>
+                        )),
+                      ]
+                    }) : []),
                   ]
                 })
               )}
@@ -1563,7 +1672,7 @@ export function TimelineView({
                               </ContextMenuTrigger>
                               <ContextMenuContent>
                                 <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>フェーズを削除</ContextMenuItem>
                               </ContextMenuContent>
                             </ContextMenu>
                           )
@@ -1582,7 +1691,6 @@ export function TimelineView({
                   projectTabProjects.flatMap((p) => {
                     const isExpanded = expandedProjectIds.has(p.id)
                     const childTasks = p.has_children ? (childrenByParentId.get(p.id) ?? []) : []
-                    const packedRows = isExpanded ? packChildTasks(childTasks) : []
 
                     const parentOverride = barDrag.getBarOverride(p.id)
                     const parentEffStart = parentOverride?.start_date ?? p.start_date
@@ -1601,9 +1709,8 @@ export function TimelineView({
                     }
                     const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
                     const isParentDragging = barDrag.draggingId === p.id
-                    // 親 + 全子タスクの key_dates を親行に常に集約して表示
                     const allKeyDatesForParentDay = Object.entries(
-                      [...p.key_dates, ...childTasks.flatMap((c) => c.key_dates)].reduce<Record<string, string[]>>((acc, kd) => {
+                      [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
                         ;(acc[kd.date] ??= []).push(kd.label || kd.date)
                         return acc
@@ -1643,7 +1750,7 @@ export function TimelineView({
                                 if (!dates) return
                                 setExpandedProjectIds((prev) => new Set(prev).add(p.id))
                                 startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate) })
-                              }}>子タスクを追加</ContextMenuItem>}
+                              }}>フェーズを追加</ContextMenuItem>}
                             </ContextMenuContent>
                           </ContextMenu>
                         )}
@@ -1658,54 +1765,112 @@ export function TimelineView({
                           )
                         })}
                       </div>,
-                      // 子タスクパック行
-                      ...packedRows.map((rowChildren, rowIdx) => (
-                        <div
-                          key={`child-row-${p.id}-${rowIdx}`}
-                          style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
-                          className={`border-b ${rowIdx === packedRows.length - 1 ? "border-black" : ""} bg-muted/20`}
-                        >
-                          {showTodayLine && (
-                            <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
-                          )}
-                          {highlightedDateIndexArray.map((idx) => (
-                            <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
-                          ))}
-                          {rowChildren.map((c) => {
-                            const override = barDrag.getBarOverride(c.id)
-                            const effStart = override?.start_date ?? c.start_date
-                            const effEnd = override?.end_date ?? c.end_date
-                            if (!effStart || !effEnd) return null
-                            const clampedStart = Math.max(0, dayDiff(start, parseLocalDate(effStart)))
-                            const clampedEnd = Math.min(totalDays - 1, dayDiff(start, parseLocalDate(effEnd)))
-                            if (clampedStart > clampedEnd) return null
-                            const barLeft = clampedStart * dayWidth + 3
-                            const barWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
-                            const barColor = barColorFromProject(c, true)
-                            const isThisDragging = barDrag.draggingId === c.id
-                            const isDark = c.assignee_type === "stakeholder" && c.stakeholder_assignee_ids.length > 0
-                            return (
-                              <ContextMenu key={c.id}>
+                      // フェーズ行（1フェーズ1行）＋ワーク行
+                      ...(isExpanded ? childTasks.flatMap((phase, phaseIdx) => {
+                        const isPhaseExpanded = expandedPhaseIds.has(phase.id)
+                        const works = phase.has_children ? (childrenByParentId.get(phase.id) ?? []) : []
+                        const packedWorkRows = isPhaseExpanded ? packChildTasks(works) : []
+                        const isLastPhase = phaseIdx === childTasks.length - 1
+
+                        const phaseOverride = barDrag.getBarOverride(phase.id)
+                        const phaseEffStart = phaseOverride?.start_date ?? phase.start_date
+                        const phaseEffEnd = phaseOverride?.end_date ?? phase.end_date
+                        let phaseBarLeft: number | null = null
+                        let phaseBarWidth: number | null = null
+                        if (phaseEffStart && phaseEffEnd) {
+                          const sd = parseLocalDate(phaseEffStart)
+                          const ed = parseLocalDate(phaseEffEnd)
+                          const cs = Math.max(0, dayDiff(start, sd))
+                          const ce = Math.min(totalDays - 1, dayDiff(start, ed))
+                          if (cs <= ce) { phaseBarLeft = cs * dayWidth + 3; phaseBarWidth = (ce - cs + 1) * dayWidth - 6 }
+                        }
+                        const phaseBarColor = barColorFromProject(phase, true)
+                        const isPhaseBarDragging = barDrag.draggingId === phase.id
+                        const isDarkPhase = phase.assignee_type === "stakeholder" && phase.stakeholder_assignee_ids.length > 0
+
+                        return [
+                          // フェーズバー行
+                          <div
+                            key={`phase-bar-day-${phase.id}`}
+                            style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                            className={`border-b ${isLastPhase && packedWorkRows.length === 0 ? "border-black" : ""} bg-muted/20`}
+                          >
+                            {showTodayLine && (
+                              <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
+                            )}
+                            {highlightedDateIndexArray.map((idx) => (
+                              <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
+                            ))}
+                            {phaseBarLeft !== null && phaseBarWidth !== null && (
+                              <ContextMenu>
                                 <ContextMenuTrigger
-                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
-                                  style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
-                                  onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current) }}
-                                  onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isPhaseBarDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                  style={{ left: phaseBarLeft, width: phaseBarWidth, top: 10, bottom: 10, backgroundColor: phaseBarColor }}
+                                  onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", phase, e, scrollRef.current) }}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
                                   onMouseLeave={() => setBarHoverCard(null)}
                                 >
-                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
-                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDark ? "text-gray-800" : "text-white"}`}>{c.name}</span>
-                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", c, e, scrollRef.current) }} />
+                                  <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", phase, e, scrollRef.current) }} />
+                                  <span className={`px-2 text-xs font-medium truncate leading-none ${isDarkPhase ? "text-gray-800" : "text-white"}`}>{phase.name}</span>
+                                  <div className={`absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", phase, e, scrollRef.current) }} />
                                 </ContextMenuTrigger>
                                 <ContextMenuContent>
-                                  <ContextMenuItem onClick={() => setEditProject(c)}>編集する</ContextMenuItem>
-                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(c)}>子タスクを削除</ContextMenuItem>
+                                  <ContextMenuItem onClick={() => setEditProject(phase)}>編集する</ContextMenuItem>
+                                  <ContextMenuItem onClick={() => addWorkDirectly(phase)}>ワークを追加</ContextMenuItem>
+                                  <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(phase)}>フェーズを削除</ContextMenuItem>
                                 </ContextMenuContent>
                               </ContextMenu>
-                            )
-                          })}
-                        </div>
-                      )),
+                            )}
+                          </div>,
+                          // ワーク行（パック）
+                          ...packedWorkRows.map((workRow, wRowIdx) => (
+                            <div
+                              key={`work-bar-day-${phase.id}-${wRowIdx}`}
+                              style={{ height: ROW_HEIGHT, width: totalWidth, position: "relative", backgroundImage: rowBg }}
+                              className={`border-b ${isLastPhase && wRowIdx === packedWorkRows.length - 1 ? "border-black" : ""} bg-violet-50/30`}
+                            >
+                              {showTodayLine && (
+                                <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: todayIndex * dayWidth, width: dayWidth, backgroundColor: "rgba(74,222,128,0.3)" }} />
+                              )}
+                              {highlightedDateIndexArray.map((idx) => (
+                                <div key={idx} className="absolute top-0 bottom-0 pointer-events-none" style={{ left: idx * dayWidth, width: dayWidth, backgroundColor: "rgba(234,179,8,0.2)" }} />
+                              ))}
+                              {workRow.map((work) => {
+                                const workOverride = barDrag.getBarOverride(work.id)
+                                const wEffStart = workOverride?.start_date ?? work.start_date
+                                const wEffEnd = workOverride?.end_date ?? work.end_date
+                                if (!wEffStart || !wEffEnd) return null
+                                const wcs = Math.max(0, dayDiff(start, parseLocalDate(wEffStart)))
+                                const wce = Math.min(totalDays - 1, dayDiff(start, parseLocalDate(wEffEnd)))
+                                if (wcs > wce) return null
+                                const wBarLeft = wcs * dayWidth + 3
+                                const wBarWidth = (wce - wcs + 1) * dayWidth - 6
+                                const workBarColor = barColorFromWork(work.volume)
+                                const isWorkDragging = barDrag.draggingId === work.id
+                                return (
+                                  <ContextMenu key={work.id}>
+                                    <ContextMenuTrigger
+                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isWorkDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                      style={{ left: wBarLeft, width: wBarWidth, top: 10, bottom: 10, backgroundColor: workBarColor }}
+                                      onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", work, e, scrollRef.current) }}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                      onMouseLeave={() => setBarHoverCard(null)}
+                                    >
+                                      <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", work, e, scrollRef.current) }} />
+                                      <span className="px-2 text-xs font-medium truncate leading-none text-white">{work.name}</span>
+                                      <div className="absolute right-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-end", work, e, scrollRef.current) }} />
+                                    </ContextMenuTrigger>
+                                    <ContextMenuContent>
+                                      <ContextMenuItem onClick={() => setEditProject(work)}>編集する</ContextMenuItem>
+                                      <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(work)}>ワークを削除</ContextMenuItem>
+                                    </ContextMenuContent>
+                                  </ContextMenu>
+                                )
+                              })}
+                            </div>
+                          )),
+                        ]
+                      }) : []),
                     ]
                   })
                 )}
@@ -1985,8 +2150,8 @@ export function TimelineView({
                                         const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
-                                      }}>子タスクを追加</ContextMenuItem>}
-                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
+                                      }}>フェーズを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>フェーズを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {keyDateEntries.map(([date, labels]) => {
@@ -2261,8 +2426,8 @@ export function TimelineView({
                                         const dates = calcQuickChildDates(p, childrenByParentId.get(p.id) ?? [])
                                         if (!dates) return
                                         startTransition(async () => { await quickAddChildTaskAction(p.id, p.status, dates.startDate, dates.endDate, [u.id]) })
-                                      }}>子タスクを追加</ContextMenuItem>}
-                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>子タスクを削除</ContextMenuItem>}
+                                      }}>フェーズを追加</ContextMenuItem>}
+                                      {p.parent_id !== null && <ContextMenuItem variant="destructive" onClick={() => setDeleteConfirmTask(p)}>フェーズを削除</ContextMenuItem>}
                                     </ContextMenuContent>
                                   </ContextMenu>
                                   {/* 日付メモの赤丸 */}
@@ -2314,6 +2479,7 @@ export function TimelineView({
           parentProject={projectsById.get(editProject.parent_id)!}
           childTask={editProject}
           users={users}
+          taskLabel={projectsById.get(editProject.parent_id)?.parent_id !== null ? "ワーク" : "フェーズ"}
           open={true}
           onOpenChange={(open) => !open && setEditProject(null)}
         />
@@ -2332,7 +2498,7 @@ export function TimelineView({
         <Dialog open={true} onOpenChange={(open) => { if (!open) setDeleteConfirmTask(null) }}>
           <DialogContent className="sm:max-w-sm">
             <DialogHeader>
-              <DialogTitle>子タスクを削除</DialogTitle>
+              <DialogTitle>{projectsById.get(deleteConfirmTask.parent_id ?? -1)?.parent_id !== null ? "ワークを削除" : "フェーズを削除"}</DialogTitle>
             </DialogHeader>
             <p className="text-sm text-muted-foreground">「{deleteConfirmTask.name}」を削除しますか？この操作は元に戻せません。</p>
             <DialogFooter>
