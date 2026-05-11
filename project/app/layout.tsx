@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "5ive Next App",
+  title: "かねみつ〜る for 5ive",
   description: "Project Management for 5ive",
   robots: { index: false, follow: false },
 }

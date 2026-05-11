@@ -26,7 +26,7 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="px-4 py-4">
-        <span className="text-base font-bold">5ive</span>
+        <span className="text-base font-bold">かねみつ〜る</span>
       </SidebarHeader>
       <SidebarContent>
         <SidebarMenu>
