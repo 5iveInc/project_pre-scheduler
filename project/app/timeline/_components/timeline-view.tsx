@@ -78,6 +78,13 @@ function barColorFromParentVolume(volume: number | null): string {
   return volume !== null ? (VOLUME_PARENT_COLORS[volume] ?? VOLUME_PARENT_COLORS[3]) : VOLUME_PARENT_COLORS[3]
 }
 
+function getRootStatus(p: Project, byId: Map<number, Project>): string {
+  if (p.parent_id === null) return p.status
+  const parent = byId.get(p.parent_id)
+  if (!parent || parent.parent_id === null) return parent?.status ?? p.status
+  return byId.get(parent.parent_id)?.status ?? parent.status
+}
+
 function barColorFromProject(p: Project, ignoreChildren = false): string {
   if (p.status === "相談中") return "#d1d5db" // gray-300
   if (p.parent_id !== null) {
@@ -1376,7 +1383,7 @@ export function TimelineView({
                         const phaseOverride = monthBarDrag.getBarOverride(phase.id)
                         const phaseBarInfo = calcMonthViewBar(phaseOverride ?? phase, monthViewMonths)
                         const isPhaseBarDragging = monthBarDrag.draggingId === phase.id
-                        const phaseBarColor = barColorFromProject(phase, true)
+                        const phaseBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromProject(phase, true)
                         const isDarkPhase = phase.assignee_type === "stakeholder" && phase.stakeholder_assignee_ids.length > 0
 
                         return [
@@ -1424,7 +1431,7 @@ export function TimelineView({
                                 const workOverride = monthBarDrag.getBarOverride(work.id)
                                 const workBarInfo = calcMonthViewBar(workOverride ?? work, monthViewMonths)
                                 if (!workBarInfo) return null
-                                const workBarColor = barColorFromWork(work.volume)
+                                const workBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromWork(work.volume)
                                 const isWorkDragging = monthBarDrag.draggingId === work.id
                                 return (
                                   <ContextMenu key={work.id}>
@@ -1784,7 +1791,7 @@ export function TimelineView({
                           const ce = Math.min(totalDays - 1, dayDiff(start, ed))
                           if (cs <= ce) { phaseBarLeft = cs * dayWidth + 3; phaseBarWidth = (ce - cs + 1) * dayWidth - 6 }
                         }
-                        const phaseBarColor = barColorFromProject(phase, true)
+                        const phaseBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromProject(phase, true)
                         const isPhaseBarDragging = barDrag.draggingId === phase.id
                         const isDarkPhase = phase.assignee_type === "stakeholder" && phase.stakeholder_assignee_ids.length > 0
 
@@ -1845,7 +1852,7 @@ export function TimelineView({
                                 if (wcs > wce) return null
                                 const wBarLeft = wcs * dayWidth + 3
                                 const wBarWidth = (wce - wcs + 1) * dayWidth - 6
-                                const workBarColor = barColorFromWork(work.volume)
+                                const workBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromWork(work.volume)
                                 const isWorkDragging = barDrag.draggingId === work.id
                                 return (
                                   <ContextMenu key={work.id}>
@@ -2132,7 +2139,7 @@ export function TimelineView({
                                         width: `${barInfo.widthPct}%`,
                                         top: barTop,
                                         height: barHeight,
-                                        backgroundColor: barColorFromProject(p),
+                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorFromProject(p),
                                       }}
                                       onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
                                       onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
@@ -2393,7 +2400,7 @@ export function TimelineView({
                                         width: barWidth,
                                         top: barTop,
                                         height: barHeight,
-                                        backgroundColor: barColorFromProject(p),
+                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorFromProject(p),
                                       }}
                                       onMouseDown={(e) => {
                                         if (!assignScrollRef.current) return
