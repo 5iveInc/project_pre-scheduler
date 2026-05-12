@@ -97,6 +97,20 @@ function barColorFromProject(p: Project, ignoreChildren = false): string {
   return barColorFromVolume(p.volume)
 }
 
+function barColorForAssign(p: Project, byId: Map<number, Project>): string {
+  if (p.parent_id !== null) {
+    if (p.assignee_type === "client") return "#f87171"
+    if (p.assignee_type === "stakeholder") {
+      return p.stakeholder_assignee_ids.length === 0 ? "#000000" : "#fde047"
+    }
+    const parent = byId.get(p.parent_id)
+    if (parent !== undefined && parent.parent_id !== null) return barColorFromWork(p.volume)
+    return barColorFromVolume(p.volume)
+  }
+  if (p.has_children) return barColorFromParentVolume(p.volume)
+  return barColorFromVolume(p.volume)
+}
+
 // ── 日付ユーティリティ ──────────────────────────────────────
 
 function parseLocalDate(str: string): Date {
@@ -712,8 +726,10 @@ export function TimelineView({
   // 担当タブ 空きハイライト
   const [showAvailabilityHighlight, setShowAvailabilityHighlight] = useState(false)
 
-  // 担当タブ 親バー非表示
-  const [hideParentBars, setHideParentBars] = useState(false)
+  // 担当タブ レーン表示切り替え（案件／フェーズ／ワーク）
+  const [showParentLane, setShowParentLane] = useState(true)
+  const [showChildLane, setShowChildLane] = useState(true)
+  const [showGrandchildLane, setShowGrandchildLane] = useState(true)
 
   // 案件タブ絞り込み（hiddenProjectUserIds に含まれるユーザーの案件は非表示）
   const [hiddenProjectUserIds, setHiddenProjectUserIds] = useState<Set<number>>(new Set())
@@ -917,7 +933,6 @@ export function TimelineView({
   const assignTimelineData = useMemo(() => {
     const filteredProjects = projects
       .filter((p) => !showOrderedOnly || p.status === "受注済")
-      .filter((p) => !hideParentBars || !p.has_children)
       .filter((p) => p.parent_id === null || p.assignee_type === "5ive")
     const assigneeUsers = users.filter((u) =>
       filteredProjects.some((p) => p.assignee_ids.includes(u.id))
@@ -925,21 +940,33 @@ export function TimelineView({
     const visibleAssigneeUsers = assigneeUsers.filter((u) => !hiddenUserIds.has(u.id))
     const userLaneData = visibleAssigneeUsers.map((u) => {
       const userProjects = filteredProjects.filter((p) => p.assignee_ids.includes(u.id))
-      if (hideParentBars) {
-        const { assignments, laneCount } = calcLanes(userProjects)
-        return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount: 0 }
+      const isDepth1 = (p: Project) => {
+        if (p.parent_id === null) return false
+        const parent = projectsById.get(p.parent_id)
+        return parent !== undefined && parent.parent_id === null
       }
-      const parentProjects = userProjects.filter((p) => p.parent_id === null)
-      const childProjects = userProjects.filter((p) => p.parent_id !== null)
+      const isDepth2 = (p: Project) => {
+        if (p.parent_id === null) return false
+        const parent = projectsById.get(p.parent_id)
+        return parent !== undefined && parent.parent_id !== null
+      }
+      const parentProjects = showParentLane ? userProjects.filter((p) => p.parent_id === null) : []
+      const childProjects = showChildLane ? userProjects.filter(isDepth1) : []
+      const grandchildProjects = showGrandchildLane ? userProjects.filter(isDepth2) : []
       const { assignments: parentAssignments, laneCount: parentLaneCount } = calcLanes(parentProjects)
       const { assignments: childAssignmentsRaw, laneCount: childLaneCount } = calcLanes(childProjects)
-      const childAssignments = childAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentLaneCount }))
-      const assignments = [...parentAssignments, ...childAssignments]
-      const laneCount = parentLaneCount + (childProjects.length > 0 ? childLaneCount : 0)
-      return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount }
+      const { assignments: grandchildAssignmentsRaw, laneCount: grandchildLaneCount } = calcLanes(grandchildProjects)
+      const parentSectionLanes = parentProjects.length > 0 ? parentLaneCount : 0
+      const childSectionLanes = childProjects.length > 0 ? childLaneCount : 0
+      const grandchildSectionLanes = grandchildProjects.length > 0 ? grandchildLaneCount : 0
+      const childAssignments = childAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentSectionLanes }))
+      const grandchildAssignments = grandchildAssignmentsRaw.map((a) => ({ ...a, lane: a.lane + parentSectionLanes + childSectionLanes }))
+      const assignments = [...parentAssignments, ...childAssignments, ...grandchildAssignments]
+      const laneCount = Math.max(1, parentSectionLanes + childSectionLanes + grandchildSectionLanes)
+      return { user: u, assignments, laneCount, rowHeight: laneCount * ROW_HEIGHT, parentLaneCount: parentSectionLanes, childLaneCount: childSectionLanes }
     })
     return { assigneeUsers, userLaneData }
-  }, [projects, users, showOrderedOnly, hideParentBars, hiddenUserIds])
+  }, [projects, users, showOrderedOnly, showParentLane, showChildLane, showGrandchildLane, hiddenUserIds, projectsById])
 
   const TABS = [
     { id: "project", label: "案件" },
@@ -1937,16 +1964,30 @@ export function TimelineView({
                 />
                 受注済のみ
               </label>
-              {/* 親を非表示（担当タブ） */}
-              <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={hideParentBars}
-                  onChange={(e) => setHideParentBars(e.target.checked)}
-                  className="size-4 rounded border-input accent-primary"
-                />
-                親を非表示
-              </label>
+              {/* レーン表示切り替え（担当タブ） */}
+              <div className="inline-flex items-center gap-1 rounded-md border px-1 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => setShowParentLane((prev) => !prev)}
+                  className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showParentLane ? "bg-green-100 text-green-700 border border-green-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
+                >
+                  案件
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowChildLane((prev) => !prev)}
+                  className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showChildLane ? "bg-blue-100 text-blue-700 border border-blue-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
+                >
+                  フェーズ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowGrandchildLane((prev) => !prev)}
+                  className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showGrandchildLane ? "bg-violet-100 text-violet-700 border border-violet-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
+                >
+                  ワーク
+                </button>
+              </div>
               {/* 空きハイライト（担当タブ） */}
               <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
                 <input
@@ -2099,7 +2140,7 @@ export function TimelineView({
                           担当者が割り当てられた案件がありません。
                         </div>
                       ) : (
-                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount }) => (
+                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount, childLaneCount }) => (
                           <div
                             key={u.id}
                             style={{ height: rowHeight, width: totalMonthWidth, position: "relative" }}
@@ -2113,6 +2154,13 @@ export function TimelineView({
                               <div
                                 className="absolute left-0 right-0 pointer-events-none z-10"
                                 style={{ top: parentLaneCount * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
+                              />
+                            )}
+                            {/* 子/孫セクション区切り線 */}
+                            {childLaneCount > 0 && (parentLaneCount + childLaneCount) < laneCount && (
+                              <div
+                                className="absolute left-0 right-0 pointer-events-none z-10"
+                                style={{ top: (parentLaneCount + childLaneCount) * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
                               />
                             )}
                             {assignments.map(({ project: p, lane }) => {
@@ -2139,7 +2187,7 @@ export function TimelineView({
                                         width: `${barInfo.widthPct}%`,
                                         top: barTop,
                                         height: barHeight,
-                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorFromProject(p),
+                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorForAssign(p, projectsById),
                                       }}
                                       onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
                                       onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
@@ -2313,7 +2361,7 @@ export function TimelineView({
                           担当者が割り当てられた案件がありません。
                         </div>
                       ) : (
-                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount }) => {
+                        userLaneData.map(({ user: u, assignments, rowHeight, laneCount, parentLaneCount, childLaneCount }) => {
                           const userPaidLeaveSet = new Set(userPaidLeaveMap[u.id] ?? [])
                           const userIsRest = (d: Date) => isRestDay(d) || userPaidLeaveSet.has(toYMD(d))
                           const userHolidaySet = userPaidLeaveSet.size > 0
@@ -2336,6 +2384,13 @@ export function TimelineView({
                               <div
                                 className="absolute left-0 right-0 pointer-events-none z-10"
                                 style={{ top: parentLaneCount * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
+                              />
+                            )}
+                            {/* 子/孫セクション区切り線 */}
+                            {childLaneCount > 0 && (parentLaneCount + childLaneCount) < laneCount && (
+                              <div
+                                className="absolute left-0 right-0 pointer-events-none z-10"
+                                style={{ top: (parentLaneCount + childLaneCount) * ROW_HEIGHT - 1, height: 1, backgroundColor: "#6b7280", opacity: 0.4 }}
                               />
                             )}
                             {/* 空きハイライト（オレンジ） */}
@@ -2400,7 +2455,7 @@ export function TimelineView({
                                         width: barWidth,
                                         top: barTop,
                                         height: barHeight,
-                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorFromProject(p),
+                                        backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorForAssign(p, projectsById),
                                       }}
                                       onMouseDown={(e) => {
                                         if (!assignScrollRef.current) return
