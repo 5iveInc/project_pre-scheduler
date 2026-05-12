@@ -429,7 +429,7 @@ function DragDateTooltip({
   )
 }
 
-function BarHoverCardContent({ project, offDaySet }: { project: Project; offDaySet: Set<string> }) {
+function BarHoverCardContent({ project, offDaySet, parentName }: { project: Project; offDaySet: Set<string>; parentName?: string }) {
   const assigneeDisplay = project.assignee_names.length > 0 ? project.assignee_names.join("、") : "未設定"
   const totalBusinessDays = project.start_date && project.end_date
     ? calcBusinessDays(project.start_date, project.end_date, offDaySet)
@@ -447,7 +447,9 @@ function BarHoverCardContent({ project, offDaySet }: { project: Project; offDayS
   return (
     <div className="space-y-1.5 text-xs">
       <div>
-        <div className="font-semibold text-sm leading-snug pb-1 border-b border-gray-300">{project.name}</div>
+        <div className="font-semibold text-sm leading-snug">{project.name}</div>
+        {parentName && <div className="text-[10px] text-muted-foreground leading-snug pb-1 border-b border-gray-300">{parentName}</div>}
+        {!parentName && <div className="pb-1 border-b border-gray-300" />}
       </div>
       <div>
         <span className="font-semibold">担当者：</span>
@@ -691,7 +693,7 @@ export function TimelineView({
 
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [deleteConfirmTask, setDeleteConfirmTask] = useState<Project | null>(null)
-  const [barHoverCard, setBarHoverCard] = useState<{ project: Project; x: number; y: number; offDaySet: Set<string> } | null>(null)
+  const [barHoverCard, setBarHoverCard] = useState<{ project: Project; x: number; y: number; offDaySet: Set<string>; parentName?: string } | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
@@ -1319,7 +1321,7 @@ export function TimelineView({
                                 className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                 style={{ left: `${barInfo.leftPct}%`, width: `${barInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: barColor }}
                                 onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", c, e, monthViewScrollRef.current) }}
-                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName })}
                                 onMouseLeave={() => setBarHoverCard(null)}
                               >
                                 <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", c, e, monthViewScrollRef.current) }} />
@@ -1429,7 +1431,7 @@ export function TimelineView({
                                   className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isPhaseBarDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                   style={{ left: `${phaseBarInfo.leftPct}%`, width: `${phaseBarInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: phaseBarColor }}
                                   onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", phase, e, monthViewScrollRef.current) }}
-                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName: p.name })}
                                   onMouseLeave={() => setBarHoverCard(null)}
                                 >
                                   <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", phase, e, monthViewScrollRef.current) }} />
@@ -1466,7 +1468,7 @@ export function TimelineView({
                                       className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isWorkDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                       style={{ left: `${workBarInfo.leftPct}%`, width: `${workBarInfo.widthPct}%`, top: 10, bottom: 10, backgroundColor: workBarColor }}
                                       onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", work, e, monthViewScrollRef.current) }}
-                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName: p.name })}
                                       onMouseLeave={() => setBarHoverCard(null)}
                                     >
                                       <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", work, e, monthViewScrollRef.current) }} />
@@ -1697,7 +1699,7 @@ export function TimelineView({
                                 className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                 style={{ left: barLeft, width: barWidth, top: 10, bottom: 10, backgroundColor: barColor }}
                                 onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", c, e, scrollRef.current) }}
-                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                onMouseEnter={(e) => setBarHoverCard({ project: c, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName })}
                                 onMouseLeave={() => setBarHoverCard(null)}
                               >
                                 <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDark ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", c, e, scrollRef.current) }} />
@@ -1841,7 +1843,7 @@ export function TimelineView({
                                   className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isPhaseBarDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                   style={{ left: phaseBarLeft, width: phaseBarWidth, top: 10, bottom: 10, backgroundColor: phaseBarColor }}
                                   onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", phase, e, scrollRef.current) }}
-                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                  onMouseEnter={(e) => setBarHoverCard({ project: phase, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName: p.name })}
                                   onMouseLeave={() => setBarHoverCard(null)}
                                 >
                                   <div className={`absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize ${isDarkPhase ? "bg-black/30" : "bg-white/60"}`} onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", phase, e, scrollRef.current) }} />
@@ -1887,7 +1889,7 @@ export function TimelineView({
                                       className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isWorkDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                       style={{ left: wBarLeft, width: wBarWidth, top: 10, bottom: 10, backgroundColor: workBarColor }}
                                       onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("move", work, e, scrollRef.current) }}
-                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet })}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: work, x: e.clientX, y: e.clientY, offDaySet: holidaySet, parentName: p.name })}
                                       onMouseLeave={() => setBarHoverCard(null)}
                                     >
                                       <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!scrollRef.current) return; barDrag.startDrag("resize-start", work, e, scrollRef.current) }} />
@@ -2190,7 +2192,7 @@ export function TimelineView({
                                         backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorForAssign(p, projectsById),
                                       }}
                                       onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("move", p, e, monthViewScrollRef.current) }}
-                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]), parentName: (() => { if (p.parent_id === null) return undefined; const par = projectsById.get(p.parent_id); if (!par || par.parent_id === null) return par?.name; return projectsById.get(par.parent_id)?.name ?? par.name })() })}
                                       onMouseLeave={() => setBarHoverCard(null)}
                                     >
                                       <div className="absolute left-[3px] top-1/2 -translate-y-1/2 h-[80%] w-[3px] rounded-[999px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-ew-resize" onMouseDown={(e) => { if (!monthViewScrollRef.current) return; monthBarDrag.startDrag("resize-start", p, e, monthViewScrollRef.current) }} />
@@ -2461,7 +2463,7 @@ export function TimelineView({
                                         if (!assignScrollRef.current) return
                                         barDrag.startDrag("move", p, e, assignScrollRef.current)
                                       }}
-                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]) })}
+                                      onMouseEnter={(e) => setBarHoverCard({ project: p, x: e.clientX, y: e.clientY, offDaySet: new Set([...holidaySet, ...(userPaidLeaveMap[u.id] ?? [])]), parentName: (() => { if (p.parent_id === null) return undefined; const par = projectsById.get(p.parent_id); if (!par || par.parent_id === null) return par?.name; return projectsById.get(par.parent_id)?.name ?? par.name })() })}
                                       onMouseLeave={() => setBarHoverCard(null)}
                                     >
                                       <div
@@ -2715,7 +2717,7 @@ export function TimelineView({
                 top: barHoverCard.y + 16,
               }}
             >
-              <BarHoverCardContent project={barHoverCard.project} offDaySet={barHoverCard.offDaySet} />
+              <BarHoverCardContent project={barHoverCard.project} offDaySet={barHoverCard.offDaySet} parentName={barHoverCard.parentName} />
             </div>
           )}
           {barDrag.isDragging && barDrag.mousePos && barDrag.dragType && (
