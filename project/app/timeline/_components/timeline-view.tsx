@@ -586,19 +586,31 @@ function serializeParam<K extends keyof TimelineSearchParams>(key: K, value: Tim
 function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => void] {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const params = useMemo(() => parseTimelineParams(searchParams), [searchParams])
+
+  // useState で UI 状態を管理することで、静的プリレンダリングページで
+  // router.replace 後に SearchParamsContext が更新されない問題を回避する
+  const [params, setParams] = useState<TimelineSearchParams>(() => parseTimelineParams(searchParams))
+
+  // ブラウザの戻る・進む操作など外部からの URL 変化に追従する
+  useEffect(() => {
+    setParams(parseTimelineParams(searchParams))
+  }, [searchParams])
 
   const setParam = useCallback(<K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => {
-    const urlKey = URL_KEY_MAP[key]
-    const serialized = serializeParam(key, value)
-    const next = new URLSearchParams(searchParams.toString())
-    if (serialized === null) {
-      next.delete(urlKey)
-    } else {
-      next.set(urlKey, serialized)
+    // params から新しい状態を構築して即時反映
+    const newParams = { ...params, [key]: value } as TimelineSearchParams
+    setParams(newParams)
+
+    // 全パラメーターから URL を再構築（stale な searchParams に依存しない）
+    const next = new URLSearchParams()
+    for (const k of Object.keys(URL_KEY_MAP) as (keyof TimelineSearchParams)[]) {
+      const serialized = serializeParam(k, newParams[k])
+      if (serialized !== null) {
+        next.set(URL_KEY_MAP[k], serialized)
+      }
     }
     router.replace(`?${next.toString()}`, { scroll: false })
-  }, [router, searchParams])
+  }, [params, router])
 
   return [params, setParam]
 }
@@ -1249,7 +1261,7 @@ export function TimelineView({
                   <input
                     type="checkbox"
                     checked={showUnassigned}
-                    onChange={(e) => setTimelineParam("projectFilter", { hiddenUserIds, showUnassigned: e.target.checked })}
+                    onChange={(e) => setTimelineParam("projectFilter", { hiddenUserIds: hiddenProjectUserIds, showUnassigned: e.target.checked })}
                     className="size-4 rounded border-input accent-primary shrink-0"
                   />
                   <span className="truncate text-muted-foreground">未アサイン</span>
