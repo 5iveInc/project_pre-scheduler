@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
+import { useRouter, useSearchParams } from "next/navigation"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
@@ -471,6 +472,137 @@ function BarHoverCardContent({ project, offDaySet, parentName }: { project: Proj
   )
 }
 
+// ── URLパラメーター管理 ────────────────────────────────────
+// 今後パラメーターを追加する際はこの型・URL_KEY_MAP・parseTimelineParams・serializeParam に追記する
+
+type TimelineSearchParams = {
+  view: "project" | "assign"
+  isOrdered: boolean
+  projectSort: { key: SortKey | null; order: "asc" | "desc" }
+  projectFilter: { hiddenUserIds: Set<number>; showUnassigned: boolean }
+  assignShow: { parent: boolean; child: boolean; grandchild: boolean }
+  isAssignable: boolean
+  assignFilter: { hiddenUserIds: Set<number> }
+}
+
+const URL_KEY_MAP: Record<keyof TimelineSearchParams, string> = {
+  view: "view",
+  isOrdered: "is_ordered",
+  projectSort: "projectSort",
+  projectFilter: "projectFilter",
+  assignShow: "assignShow",
+  isAssignable: "is_assignable",
+  assignFilter: "assignFilter",
+}
+
+const DEFAULT_PROJECT_SORT: TimelineSearchParams["projectSort"] = { key: "start_date", order: "asc" }
+const DEFAULT_PROJECT_FILTER: TimelineSearchParams["projectFilter"] = { hiddenUserIds: new Set(), showUnassigned: true }
+const DEFAULT_ASSIGN_SHOW: TimelineSearchParams["assignShow"] = { parent: true, child: true, grandchild: true }
+const DEFAULT_ASSIGN_FILTER: TimelineSearchParams["assignFilter"] = { hiddenUserIds: new Set() }
+
+function parseTimelineParams(searchParams: URLSearchParams): TimelineSearchParams {
+  const view: "project" | "assign" = searchParams.get("view") === "assign" ? "assign" : "project"
+
+  const isOrdered = searchParams.has("is_ordered")
+
+  const projectSortStr = searchParams.get("projectSort")
+  let projectSort = DEFAULT_PROJECT_SORT
+  if (projectSortStr) {
+    const [k, o] = projectSortStr.split(":")
+    const validKeys: SortKey[] = ["id", "volume", "start_date", "end_date"]
+    if (validKeys.includes(k as SortKey)) {
+      projectSort = { key: k as SortKey, order: o === "desc" ? "desc" : "asc" }
+    }
+  }
+
+  const projectFilterStr = searchParams.get("projectFilter")
+  let projectFilter = DEFAULT_PROJECT_FILTER
+  if (projectFilterStr) {
+    const parts = projectFilterStr.split(",")
+    projectFilter = {
+      hiddenUserIds: new Set(parts.filter((p) => /^\d+$/.test(p)).map(Number)),
+      showUnassigned: !parts.includes("u"),
+    }
+  }
+
+  const assignShowStr = searchParams.get("assignShow")
+  let assignShow = DEFAULT_ASSIGN_SHOW
+  if (assignShowStr) {
+    const parts = assignShowStr.split(",")
+    assignShow = {
+      parent: parts.includes("project"),
+      child: parts.includes("phase"),
+      grandchild: parts.includes("work"),
+    }
+  }
+
+  const isAssignable = searchParams.has("is_assignable")
+
+  const assignFilterStr = searchParams.get("assignFilter")
+  let assignFilter = DEFAULT_ASSIGN_FILTER
+  if (assignFilterStr) {
+    assignFilter = {
+      hiddenUserIds: new Set(assignFilterStr.split(",").filter((p) => /^\d+$/.test(p)).map(Number)),
+    }
+  }
+
+  return { view, isOrdered, projectSort, projectFilter, assignShow, isAssignable, assignFilter }
+}
+
+function serializeParam<K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]): string | null {
+  switch (key) {
+    case "view": return (value as string) === "assign" ? "assign" : null
+    case "isOrdered": return (value as boolean) ? "1" : null
+    case "projectSort": {
+      const { key: sortKey, order } = value as TimelineSearchParams["projectSort"]
+      if (sortKey === null || (sortKey === "start_date" && order === "asc")) return null
+      return `${sortKey}:${order}`
+    }
+    case "projectFilter": {
+      const { hiddenUserIds, showUnassigned } = value as TimelineSearchParams["projectFilter"]
+      const parts = [...hiddenUserIds].map(String)
+      if (!showUnassigned) parts.push("u")
+      return parts.length === 0 ? null : parts.join(",")
+    }
+    case "assignShow": {
+      const { parent, child, grandchild } = value as TimelineSearchParams["assignShow"]
+      if (parent && child && grandchild) return null
+      const parts: string[] = []
+      if (parent) parts.push("project")
+      if (child) parts.push("phase")
+      if (grandchild) parts.push("work")
+      return parts.length === 0 ? "none" : parts.join(",")
+    }
+    case "isAssignable": return (value as boolean) ? "1" : null
+    case "assignFilter": {
+      const { hiddenUserIds } = value as TimelineSearchParams["assignFilter"]
+      const parts = [...hiddenUserIds].map(String)
+      return parts.length === 0 ? null : parts.join(",")
+    }
+    default: return null
+  }
+}
+
+function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => void] {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const params = useMemo(() => parseTimelineParams(searchParams), [searchParams])
+
+  const setParam = useCallback(<K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => {
+    const urlKey = URL_KEY_MAP[key]
+    const serialized = serializeParam(key, value)
+    const next = new URLSearchParams(searchParams.toString())
+    if (serialized === null) {
+      next.delete(urlKey)
+    } else {
+      next.set(urlKey, serialized)
+    }
+    router.replace(`?${next.toString()}`, { scroll: false })
+  }, [router, searchParams])
+
+  return [params, setParam]
+}
+
 // ── タイムラインビュー ──────────────────────────────────────
 
 export function TimelineView({
@@ -601,7 +733,8 @@ export function TimelineView({
   const [highlightedDateIndices, setHighlightedDateIndices] = useState<Set<number>>(new Set())
   const highlightedDateIndexArray = useMemo(() => Array.from(highlightedDateIndices), [highlightedDateIndices])
 
-  const [activeTab, setActiveTab] = useState("project")
+  const [timelineParams, setTimelineParam] = useTimelineParams()
+  const activeTab = timelineParams.view
 
   useEffect(() => {
     if (todayIndex <= 0) return
@@ -717,30 +850,22 @@ export function TimelineView({
     })
   }
 
-  const [sortKey, setSortKey] = useState<SortKey | null>("start_date")
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
+  // ── URL パラメーター由来の設定値（URLが source of truth）──
+  const sortKey = timelineParams.projectSort.key
+  const sortOrder = timelineParams.projectSort.order
+  const showOrderedOnly = timelineParams.isOrdered
+  const showAvailabilityHighlight = timelineParams.isAssignable
+  const showParentLane = timelineParams.assignShow.parent
+  const showChildLane = timelineParams.assignShow.child
+  const showGrandchildLane = timelineParams.assignShow.grandchild
+  const hiddenProjectUserIds = timelineParams.projectFilter.hiddenUserIds
+  const showUnassigned = timelineParams.projectFilter.showUnassigned
+  const hiddenUserIds = timelineParams.assignFilter.hiddenUserIds
+
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const sortMenuRef = useRef<HTMLDivElement>(null)
-
-  // 案件タブ絞り込み（受注済のみ表示）
-  const [showOrderedOnly, setShowOrderedOnly] = useState(false)
-
-  // 担当タブ 空きハイライト
-  const [showAvailabilityHighlight, setShowAvailabilityHighlight] = useState(false)
-
-  // 担当タブ レーン表示切り替え（案件／フェーズ／ワーク）
-  const [showParentLane, setShowParentLane] = useState(true)
-  const [showChildLane, setShowChildLane] = useState(true)
-  const [showGrandchildLane, setShowGrandchildLane] = useState(true)
-
-  // 案件タブ絞り込み（hiddenProjectUserIds に含まれるユーザーの案件は非表示）
-  const [hiddenProjectUserIds, setHiddenProjectUserIds] = useState<Set<number>>(new Set())
-  const [showUnassigned, setShowUnassigned] = useState(true)
   const [projectFilterOpen, setProjectFilterOpen] = useState(false)
   const projectFilterRef = useRef<HTMLDivElement>(null)
-
-  // 担当タブ絞り込み（hiddenUserIds に含まれるユーザーは非表示）
-  const [hiddenUserIds, setHiddenUserIds] = useState<Set<number>>(new Set())
   const [assignFilterOpen, setAssignFilterOpen] = useState(false)
   const assignFilterRef = useRef<HTMLDivElement>(null)
 
@@ -838,10 +963,9 @@ export function TimelineView({
 
   function handleSortOption(key: SortKey) {
     if (sortKey === key) {
-      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"))
+      setTimelineParam("projectSort", { key, order: sortOrder === "asc" ? "desc" : "asc" })
     } else {
-      setSortKey(key)
-      setSortOrder("asc")
+      setTimelineParam("projectSort", { key, order: "asc" })
     }
     setSortMenuOpen(false)
   }
@@ -984,7 +1108,7 @@ export function TimelineView({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setTimelineParam("view", tab.id as TimelineSearchParams["view"])}
               className={[
                 "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
                 activeTab === tab.id
@@ -1078,7 +1202,7 @@ export function TimelineView({
                   <button
                     type="button"
                     className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted transition-colors"
-                    onClick={() => { setSortKey(null); setSortMenuOpen(false) }}
+                    onClick={() => { setTimelineParam("projectSort", { key: null, order: "asc" }); setSortMenuOpen(false) }}
                   >
                     <CheckIcon className="size-3.5" />
                     並び替えをリセット
@@ -1107,14 +1231,14 @@ export function TimelineView({
                   <button
                     type="button"
                     className="text-xs text-primary hover:underline"
-                    onClick={() => { setHiddenProjectUserIds(new Set()); setShowUnassigned(true) }}
+                    onClick={() => setTimelineParam("projectFilter", { hiddenUserIds: new Set(), showUnassigned: true })}
                   >
                     すべて表示
                   </button>
                   <button
                     type="button"
                     className="text-xs text-muted-foreground hover:underline"
-                    onClick={() => { setHiddenProjectUserIds(new Set(projectTabAssigneeUsers.map((u) => u.id))); setShowUnassigned(false) }}
+                    onClick={() => setTimelineParam("projectFilter", { hiddenUserIds: new Set(projectTabAssigneeUsers.map((u) => u.id)), showUnassigned: false })}
                   >
                     すべて非表示
                   </button>
@@ -1125,7 +1249,7 @@ export function TimelineView({
                   <input
                     type="checkbox"
                     checked={showUnassigned}
-                    onChange={(e) => setShowUnassigned(e.target.checked)}
+                    onChange={(e) => setTimelineParam("projectFilter", { hiddenUserIds, showUnassigned: e.target.checked })}
                     className="size-4 rounded border-input accent-primary shrink-0"
                   />
                   <span className="truncate text-muted-foreground">未アサイン</span>
@@ -1139,12 +1263,10 @@ export function TimelineView({
                       type="checkbox"
                       checked={!hiddenProjectUserIds.has(u.id)}
                       onChange={(e) => {
-                        setHiddenProjectUserIds((prev) => {
-                          const next = new Set(prev)
-                          if (e.target.checked) next.delete(u.id)
-                          else next.add(u.id)
-                          return next
-                        })
+                        const next = new Set(hiddenProjectUserIds)
+                        if (e.target.checked) next.delete(u.id)
+                        else next.add(u.id)
+                        setTimelineParam("projectFilter", { hiddenUserIds: next, showUnassigned })
                       }}
                       className="size-4 rounded border-input accent-primary shrink-0"
                     />
@@ -1159,7 +1281,7 @@ export function TimelineView({
           <input
             type="checkbox"
             checked={showOrderedOnly}
-            onChange={(e) => setShowOrderedOnly(e.target.checked)}
+            onChange={(e) => setTimelineParam("isOrdered", e.target.checked)}
             className="size-4 rounded border-input accent-primary"
           />
           受注済のみ
@@ -1961,7 +2083,7 @@ export function TimelineView({
                 <input
                   type="checkbox"
                   checked={showOrderedOnly}
-                  onChange={(e) => setShowOrderedOnly(e.target.checked)}
+                  onChange={(e) => setTimelineParam("isOrdered", e.target.checked)}
                   className="size-4 rounded border-input accent-primary"
                 />
                 受注済のみ
@@ -1970,21 +2092,21 @@ export function TimelineView({
               <div className="inline-flex items-center gap-1 rounded-md border px-1 py-0.5">
                 <button
                   type="button"
-                  onClick={() => setShowParentLane((prev) => !prev)}
+                  onClick={() => setTimelineParam("assignShow", { parent: !showParentLane, child: showChildLane, grandchild: showGrandchildLane })}
                   className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showParentLane ? "bg-green-100 text-green-700 border border-green-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
                 >
                   案件
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowChildLane((prev) => !prev)}
+                  onClick={() => setTimelineParam("assignShow", { parent: showParentLane, child: !showChildLane, grandchild: showGrandchildLane })}
                   className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showChildLane ? "bg-blue-100 text-blue-700 border border-blue-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
                 >
                   フェーズ
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowGrandchildLane((prev) => !prev)}
+                  onClick={() => setTimelineParam("assignShow", { parent: showParentLane, child: showChildLane, grandchild: !showGrandchildLane })}
                   className={["text-xs px-2 py-0.5 rounded transition-colors select-none", showGrandchildLane ? "bg-violet-100 text-violet-700 border border-violet-300" : "text-muted-foreground hover:text-foreground"].join(" ")}
                 >
                   ワーク
@@ -1995,7 +2117,7 @@ export function TimelineView({
                 <input
                   type="checkbox"
                   checked={showAvailabilityHighlight}
-                  onChange={(e) => setShowAvailabilityHighlight(e.target.checked)}
+                  onChange={(e) => setTimelineParam("isAssignable", e.target.checked)}
                   className="size-4 rounded border-input accent-primary"
                 />
                 空きハイライト
@@ -2019,14 +2141,14 @@ export function TimelineView({
                         <button
                           type="button"
                           className="text-xs text-primary hover:underline"
-                          onClick={() => setHiddenUserIds(new Set())}
+                          onClick={() => setTimelineParam("assignFilter", { hiddenUserIds: new Set() })}
                         >
                           すべて表示
                         </button>
                         <button
                           type="button"
                           className="text-xs text-muted-foreground hover:underline"
-                          onClick={() => setHiddenUserIds(new Set(assigneeUsers.map((u) => u.id)))}
+                          onClick={() => setTimelineParam("assignFilter", { hiddenUserIds: new Set(assigneeUsers.map((u) => u.id)) })}
                         >
                           すべて非表示
                         </button>
@@ -2042,12 +2164,10 @@ export function TimelineView({
                             type="checkbox"
                             checked={!hiddenUserIds.has(u.id)}
                             onChange={(e) => {
-                              setHiddenUserIds((prev) => {
-                                const next = new Set(prev)
-                                if (e.target.checked) next.delete(u.id)
-                                else next.add(u.id)
-                                return next
-                              })
+                              const next = new Set(hiddenUserIds)
+                              if (e.target.checked) next.delete(u.id)
+                              else next.add(u.id)
+                              setTimelineParam("assignFilter", { hiddenUserIds: next })
                             }}
                             className="size-4 rounded border-input accent-primary shrink-0"
                           />
