@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
@@ -584,11 +584,8 @@ function serializeParam<K extends keyof TimelineSearchParams>(key: K, value: Tim
 }
 
 function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => void] {
-  const router = useRouter()
   const searchParams = useSearchParams()
 
-  // useState で UI 状態を管理することで、静的プリレンダリングページで
-  // router.replace 後に SearchParamsContext が更新されない問題を回避する
   const [params, setParams] = useState<TimelineSearchParams>(() => parseTimelineParams(searchParams))
 
   // ブラウザの戻る・進む操作など外部からの URL 変化に追従する
@@ -597,11 +594,9 @@ function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSe
   }, [searchParams])
 
   const setParam = useCallback(<K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => {
-    // params から新しい状態を構築して即時反映
     const newParams = { ...params, [key]: value } as TimelineSearchParams
     setParams(newParams)
 
-    // 全パラメーターから URL を再構築（stale な searchParams に依存しない）
     const next = new URLSearchParams()
     for (const k of Object.keys(URL_KEY_MAP) as (keyof TimelineSearchParams)[]) {
       const serialized = serializeParam(k, newParams[k])
@@ -609,8 +604,9 @@ function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSe
         next.set(URL_KEY_MAP[k], serialized)
       }
     }
-    router.replace(`?${next.toString()}`, { scroll: false })
-  }, [params, router])
+    const qs = next.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }, [params])
 
   return [params, setParam]
 }
