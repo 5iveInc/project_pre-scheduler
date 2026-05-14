@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { getActiveProjects, getUsers, getCustomHolidays, getUserPaidLeaves } from "@/database/db"
 import { TimelineView } from "@/app/timeline/_components/timeline-view"
 
@@ -40,7 +41,9 @@ export default async function TimelinePage() {
             </p>
           </div>
 
-          <TimelineView projects={projects} users={users} holidays={holidays} customHolidays={customHolidays} userPaidLeaves={userPaidLeaves} />
+          <Suspense>
+            <TimelineView projects={projects} users={users} holidays={holidays} customHolidays={customHolidays} userPaidLeaves={userPaidLeaves} />
+          </Suspense>
         </div>
       </div>
     </div>

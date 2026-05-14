@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect, useRef, useMemo, useCallback } from "react"
 import { createPortal } from "react-dom"
+import { useRouter, useSearchParams } from "next/navigation"
 import type { Project, User } from "@/database/db"
 import { addProjectTimelineAction, saveCustomHolidaysAction, saveUserPaidLeavesAction, updateProjectDatesAction, quickAddChildTaskAction } from "@/app/timeline/actions"
 import { useBarDrag } from "./use-bar-drag"
@@ -471,6 +472,33 @@ function BarHoverCardContent({ project, offDaySet, parentName }: { project: Proj
   )
 }
 
+// ── URLパラメーター管理 ────────────────────────────────────
+// 今後パラメーターを追加する際はこの型とフックに追記する
+
+type TimelineSearchParams = {
+  view: "project" | "assign"
+}
+
+function parseTimelineParams(searchParams: URLSearchParams): TimelineSearchParams {
+  return {
+    view: searchParams.get("view") === "assign" ? "assign" : "project",
+  }
+}
+
+function useTimelineParams(): [TimelineSearchParams, <K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => void] {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const params = useMemo(() => parseTimelineParams(searchParams), [searchParams])
+
+  const setParam = useCallback(<K extends keyof TimelineSearchParams>(key: K, value: TimelineSearchParams[K]) => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.set(key, value)
+    router.replace(`?${next.toString()}`, { scroll: false })
+  }, [router, searchParams])
+
+  return [params, setParam]
+}
+
 // ── タイムラインビュー ──────────────────────────────────────
 
 export function TimelineView({
@@ -601,7 +629,8 @@ export function TimelineView({
   const [highlightedDateIndices, setHighlightedDateIndices] = useState<Set<number>>(new Set())
   const highlightedDateIndexArray = useMemo(() => Array.from(highlightedDateIndices), [highlightedDateIndices])
 
-  const [activeTab, setActiveTab] = useState("project")
+  const [timelineParams, setTimelineParam] = useTimelineParams()
+  const activeTab = timelineParams.view
 
   useEffect(() => {
     if (todayIndex <= 0) return
@@ -984,7 +1013,7 @@ export function TimelineView({
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setTimelineParam("view", tab.id as TimelineSearchParams["view"])}
               className={[
                 "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
                 activeTab === tab.id
