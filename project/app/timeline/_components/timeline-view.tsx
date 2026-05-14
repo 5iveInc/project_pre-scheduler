@@ -666,7 +666,10 @@ export function TimelineView({
         if (scrollRef.current) scrollRef.current.scrollLeft = todayIndex * dayWidth
         if (projectHeaderScrollRef.current) projectHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
       } else {
-        if (assignScrollRef.current) assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+        if (assignScrollRef.current) {
+          assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+          assignScrollRef.current.style.setProperty('--scroll-x', `${todayIndex * dayWidth}px`)
+        }
         if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
       }
     } else {
@@ -695,6 +698,7 @@ export function TimelineView({
     }
     if (assignScrollRef.current && todayIndex > 0) {
       assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+      assignScrollRef.current.style.setProperty('--scroll-x', `${todayIndex * dayWidth}px`)
       if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     // dayWidth 変化時は再スクロールしない（意図した表示位置を保持）
@@ -752,6 +756,7 @@ export function TimelineView({
     }
     if (activeTab === "assign" && assignScrollRef.current) {
       assignScrollRef.current.scrollLeft = todayIndex * dayWidth
+      assignScrollRef.current.style.setProperty('--scroll-x', `${todayIndex * dayWidth}px`)
       if (assignHeaderScrollRef.current) assignHeaderScrollRef.current.scrollLeft = todayIndex * dayWidth
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2474,7 +2479,9 @@ export function TimelineView({
                   <div
                     ref={assignScrollRef}
                     className="overflow-x-auto flex-1"
+                    style={{ '--scroll-x': '0px' } as React.CSSProperties}
                     onScroll={(e) => {
+                      e.currentTarget.style.setProperty('--scroll-x', `${e.currentTarget.scrollLeft}px`)
                       if (assignHeaderScrollRef.current) {
                         assignHeaderScrollRef.current.scrollLeft = e.currentTarget.scrollLeft
                       }
@@ -2579,14 +2586,15 @@ export function TimelineView({
                                 <div key={p.id}>
                                   <ContextMenu>
                                     <ContextMenuTrigger
-                                      className={`group absolute rounded-md transition-opacity flex items-center overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
+                                      className={`group absolute rounded-md transition-opacity overflow-hidden shadow-sm ${isThisDragging ? "opacity-80 z-10 cursor-grabbing" : "hover:opacity-80 cursor-grab"}`}
                                       style={{
+                                        '--bar-left': `${barLeft}px`,
                                         left: barLeft,
                                         width: barWidth,
                                         top: barTop,
                                         height: barHeight,
                                         backgroundColor: getRootStatus(p, projectsById) === "相談中" ? "#d1d5db" : barColorForAssign(p, projectsById),
-                                      }}
+                                      } as React.CSSProperties}
                                       onMouseDown={(e) => {
                                         if (!assignScrollRef.current) return
                                         barDrag.startDrag("move", p, e, assignScrollRef.current)
@@ -2601,7 +2609,15 @@ export function TimelineView({
                                           barDrag.startDrag("resize-start", p, e, assignScrollRef.current)
                                         }}
                                       />
-                                      <span className="px-2 text-xs text-white font-medium truncate leading-none">
+                                      <span
+                                        className="absolute text-xs text-white font-medium leading-none overflow-hidden whitespace-nowrap text-ellipsis pointer-events-none"
+                                        style={{
+                                          left: 'max(8px, calc(var(--scroll-x, 0px) - var(--bar-left, 0px) + 8px))',
+                                          right: '8px',
+                                          top: '50%',
+                                          transform: 'translateY(-50%)',
+                                        }}
+                                      >
                                         {p.parent_id !== null && projectsById.get(p.parent_id) && `${projectsById.get(p.parent_id)!.name} -> `}{p.name}
                                       </span>
                                       <div
