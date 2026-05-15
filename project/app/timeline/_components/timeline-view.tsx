@@ -1485,7 +1485,7 @@ export function TimelineView({
                     const parentOverride = monthBarDrag.getBarOverride(p.id)
                     const parentBarInfo = calcMonthViewBar(parentOverride ?? p, monthViewMonths)
                     const isParentDragging = monthBarDrag.draggingId === p.id
-                    const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
+                    const parentBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)
                     const parentKeyDates = Object.entries(
                       [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
                         if (!kd.date) return acc
@@ -1878,7 +1878,7 @@ export function TimelineView({
                         parentBarWidth = (clampedEnd - clampedStart + 1) * dayWidth - 6
                       }
                     }
-                    const parentBarColor = isExpanded ? (p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)) : barColorFromProject(p, true)
+                    const parentBarColor = p.status === "相談中" ? "#d1d5db" : barColorFromParentVolume(p.volume)
                     const isParentDragging = barDrag.draggingId === p.id
                     const allKeyDatesForParentDay = Object.entries(
                       [...p.key_dates, ...childTasks.flatMap((c) => [...c.key_dates, ...(childrenByParentId.get(c.id) ?? []).flatMap((w) => w.key_dates)])].reduce<Record<string, string[]>>((acc, kd) => {
